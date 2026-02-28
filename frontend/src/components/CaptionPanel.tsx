@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { chatWithModule, getCaptions, getScript } from "@/lib/api";
+import { chatWithModule, getCaptions } from "@/lib/api";
 import { ModuleChatTurn } from "@/lib/types";
 
 interface CaptionPanelProps {
@@ -44,8 +44,7 @@ function parseSrt(srt: string): Segment[] {
 
 export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProps) {
   const [segments, setSegments] = useState<Segment[]>([]);
-  const [scriptText, setScriptText] = useState("");
-  const [tab, setTab] = useState<"captions" | "script" | "chat">("captions");
+  const [tab, setTab] = useState<"captions" | "chat">("captions");
   const [chatTurns, setChatTurns] = useState<ModuleChatTurn[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
@@ -56,14 +55,12 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
     let active = true;
     const load = async () => {
       try {
-        const [srt, script] = await Promise.all([getCaptions(moduleId), getScript(moduleId)]);
+        const srt = await getCaptions(moduleId);
         if (!active) return;
         setSegments(parseSrt(srt));
-        setScriptText(script.script_text || "");
       } catch {
         if (!active) return;
         setSegments([]);
-        setScriptText("");
       }
     };
     load();
@@ -112,12 +109,6 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
           Captions
         </button>
         <button
-          className={`rounded px-3 py-1 text-sm ${tab === "script" ? "bg-brand-500 text-white" : "bg-slate-100 text-slate-700"}`}
-          onClick={() => setTab("script")}
-        >
-          Script
-        </button>
-        <button
           className={`rounded px-3 py-1 text-sm ${tab === "chat" ? "bg-brand-500 text-white" : "bg-slate-100 text-slate-700"}`}
           onClick={() => setTab("chat")}
         >
@@ -136,12 +127,6 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
             </p>
           ))}
           {!segments.length ? <p className="text-sm text-slate-500">Captions unavailable.</p> : null}
-        </div>
-      ) : null}
-
-      {tab === "script" ? (
-        <div className="max-h-[420px] overflow-y-auto pr-2 text-sm text-slate-700">
-          {scriptText || "Script unavailable."}
         </div>
       ) : null}
 
