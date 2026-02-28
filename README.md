@@ -27,6 +27,9 @@ cp .env.example .env
 - `DEV_AUTH_BYPASS` (`false` by default; set `true` for bypass mode)
 - `LLM_BASE_URL`
 - `LLM_API_KEY`
+- `CHAT_BASE_URL`
+- `CHAT_API_KEY`
+- `CHAT_MODEL` (explicit module-chat model, e.g. `mistral-small-latest`)
 - `VLM_BASE_URL`
 - `VLM_API_KEY`
 - `VLM_ENABLED` (`false` by default)

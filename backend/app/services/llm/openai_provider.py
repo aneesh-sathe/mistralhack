@@ -22,6 +22,9 @@ class OpenAICompatibleProvider(LLMProvider):
         self.llm_model = cfg.llm.model
         self.llm_temperature = cfg.llm.temperature
         self.llm_max_tokens = cfg.llm.max_tokens
+        self.chat_model = cfg.chat.model or cfg.llm.model
+        self.chat_temperature = cfg.chat.temperature
+        self.chat_max_tokens = cfg.chat.max_tokens
         self.vlm_model = cfg.vlm.model
         self.vlm_temperature = cfg.vlm.temperature
         self.vlm_max_tokens = cfg.vlm.max_tokens
@@ -34,6 +37,10 @@ class OpenAICompatibleProvider(LLMProvider):
         self.vlm_client = OpenAI(
             api_key=cfg.vlm.api_key or cfg.llm.api_key or "",
             base_url=cfg.vlm.base_url or cfg.llm.base_url or None,
+        )
+        self.chat_client = OpenAI(
+            api_key=cfg.chat.api_key or cfg.llm.api_key or "",
+            base_url=cfg.chat.base_url or cfg.llm.base_url or None,
         )
 
     def _chat(
@@ -120,6 +127,15 @@ class OpenAICompatibleProvider(LLMProvider):
             max_tokens=self.llm_max_tokens,
         )
         return text.strip()
+
+    def generate_chat_text(self, messages: list[dict[str, Any]]) -> str:
+        return self._chat(
+            client=self.chat_client,
+            model=self.chat_model,
+            messages=messages,
+            temperature=self.chat_temperature,
+            max_tokens=self.chat_max_tokens,
+        ).strip()
 
     def vlm_extract_text(self, images: list[bytes], prompt: str) -> str:
         if not self.vlm_enabled:

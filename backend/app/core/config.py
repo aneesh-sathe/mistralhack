@@ -144,6 +144,7 @@ class RootConfig(BaseModel):
     app: AppConfig = Field(alias="APP")
     auth: AuthConfig = Field(alias="AUTH")
     llm: ProviderConfig = Field(alias="LLM")
+    chat: ProviderConfig = Field(alias="CHAT")
     vlm: VLMConfig = Field(alias="VLM")
     tts: TTSConfig = Field(alias="TTS")
     captions: CaptionsConfig = Field(alias="CAPTIONS")

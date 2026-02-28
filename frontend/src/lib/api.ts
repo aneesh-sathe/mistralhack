@@ -1,4 +1,12 @@
-import { AuthMeResponse, DocumentItem, JobItem, ModuleAssets, ModuleItem } from "@/lib/types";
+import {
+  AuthMeResponse,
+  DocumentItem,
+  JobItem,
+  ModuleAssets,
+  ModuleChatResponse,
+  ModuleChatTurn,
+  ModuleItem,
+} from "@/lib/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -79,4 +87,11 @@ export function videoUrl(moduleId: string) {
 
 export function backendAuthLoginUrl() {
   return `${API_BASE}/api/auth/google/login`;
+}
+
+export function chatWithModule(moduleId: string, message: string, history: ModuleChatTurn[]) {
+  return request<ModuleChatResponse>(`/api/modules/${moduleId}/chat`, {
+    method: "POST",
+    body: JSON.stringify({ message, history }),
+  });
 }

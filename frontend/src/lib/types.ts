@@ -63,3 +63,14 @@ export interface ModuleAssets {
   status: string;
   error?: string | null;
 }
+
+export interface ModuleChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ModuleChatResponse {
+  answer: string;
+  model: string;
+  module_id: string;
+}

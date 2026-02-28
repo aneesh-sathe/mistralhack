@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { getCaptions, getScript } from "@/lib/api";
+import { chatWithModule, getCaptions, getScript } from "@/lib/api";
+import { ModuleChatTurn } from "@/lib/types";
 
 interface CaptionPanelProps {
   moduleId: string;
@@ -44,7 +45,12 @@ function parseSrt(srt: string): Segment[] {
 export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProps) {
   const [segments, setSegments] = useState<Segment[]>([]);
   const [scriptText, setScriptText] = useState("");
-  const [tab, setTab] = useState<"captions" | "script">("captions");
+  const [tab, setTab] = useState<"captions" | "script" | "chat">("captions");
+  const [chatTurns, setChatTurns] = useState<ModuleChatTurn[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [chatModel, setChatModel] = useState<string>("");
 
   useEffect(() => {
     let active = true;
@@ -71,6 +77,31 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
     [segments, currentTime]
   );
 
+  const submitChat = async (event: FormEvent) => {
+    event.preventDefault();
+    const message = chatInput.trim();
+    if (!message || chatBusy) {
+      return;
+    }
+
+    const historyForApi = [...chatTurns];
+    const userTurn: ModuleChatTurn = { role: "user", content: message };
+    setChatTurns((prev) => [...prev, userTurn]);
+    setChatInput("");
+    setChatBusy(true);
+    setChatError(null);
+
+    try {
+      const res = await chatWithModule(moduleId, message, historyForApi);
+      setChatModel(res.model || "");
+      setChatTurns((prev) => [...prev, { role: "assistant", content: res.answer }]);
+    } catch (err) {
+      setChatError(err instanceof Error ? err.message : "Chat failed");
+    } finally {
+      setChatBusy(false);
+    }
+  };
+
   return (
     <div className="card h-full p-4">
       <div className="mb-3 flex gap-2">
@@ -86,6 +117,12 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
         >
           Script
         </button>
+        <button
+          className={`rounded px-3 py-1 text-sm ${tab === "chat" ? "bg-brand-500 text-white" : "bg-slate-100 text-slate-700"}`}
+          onClick={() => setTab("chat")}
+        >
+          Chat
+        </button>
       </div>
 
       {tab === "captions" ? (
@@ -100,11 +137,57 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
           ))}
           {!segments.length ? <p className="text-sm text-slate-500">Captions unavailable.</p> : null}
         </div>
-      ) : (
+      ) : null}
+
+      {tab === "script" ? (
         <div className="max-h-[420px] overflow-y-auto pr-2 text-sm text-slate-700">
           {scriptText || "Script unavailable."}
         </div>
-      )}
+      ) : null}
+
+      {tab === "chat" ? (
+        <div className="flex h-[420px] flex-col">
+          <div className="flex-1 space-y-2 overflow-y-auto pr-2">
+            {chatTurns.map((turn, index) => (
+              <div
+                key={`${turn.role}-${index}`}
+                className={`rounded px-3 py-2 text-sm ${
+                  turn.role === "user"
+                    ? "ml-8 bg-brand-50 text-brand-700"
+                    : "mr-8 bg-slate-100 text-slate-800"
+                }`}
+              >
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{turn.role}</p>
+                <p className="whitespace-pre-wrap">{turn.content}</p>
+              </div>
+            ))}
+            {!chatTurns.length ? (
+              <p className="text-sm text-slate-500">Ask questions about this module. The assistant uses module content only.</p>
+            ) : null}
+          </div>
+
+          <form onSubmit={submitChat} className="mt-3 space-y-2 border-t border-slate-200 pt-3">
+            <textarea
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="Ask a question about this lesson..."
+              rows={3}
+              className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none ring-brand-300 focus:ring"
+            />
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-slate-500">{chatModel ? `Model: ${chatModel}` : ""}</p>
+              <button
+                type="submit"
+                disabled={chatBusy || !chatInput.trim()}
+                className="rounded bg-brand-500 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {chatBusy ? "Sending..." : "Send"}
+              </button>
+            </div>
+            {chatError ? <p className="text-sm text-red-600">{chatError}</p> : null}
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }

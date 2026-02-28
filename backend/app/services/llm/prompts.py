@@ -77,3 +77,11 @@ def vlm_ocr_prompt() -> str:
         "Extract readable textbook text from these math page images. Preserve equations inline in plain text. "
         "Return only the extracted text."
     )
+
+
+def module_chat_system_prompt() -> str:
+    return (
+        "You are a math tutor assistant answering questions about one uploaded learning module. "
+        "Use only the provided module context and conversation history. "
+        "Be concise and correct. If context is insufficient, say what is missing."
+    )
