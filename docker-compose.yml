@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: math_tutor
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://postgres:postgres@postgres:5432/math_tutor}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      DEV_AUTH_BYPASS: ${DEV_AUTH_BYPASS:-false}
+      STORAGE_DIR: /data
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+      - ./backend:/app/backend
+      - ${MANIM_MCP_SERVER_DIR:-./manim-mcp-server}:/opt/manim-mcp-server
+    depends_on:
+      - postgres
+      - redis
+    command: ["sh", "/app/backend/entrypoint.sh"]
+
+  worker:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://postgres:postgres@postgres:5432/math_tutor}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      DEV_AUTH_BYPASS: ${DEV_AUTH_BYPASS:-false}
+      STORAGE_DIR: /data
+    volumes:
+      - ./data:/data
+      - ./backend:/app/backend
+      - ${MANIM_MCP_SERVER_DIR:-./manim-mcp-server}:/opt/manim-mcp-server
+    depends_on:
+      - postgres
+      - redis
+    command: ["python", "-m", "app.workers.rq_worker"]
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app/frontend
+      - /app/frontend/node_modules
+    depends_on:
+      - backend
+    command: ["npm", "run", "dev", "--", "-H", "0.0.0.0", "-p", "3000"]
+
+volumes:
+  postgres_data:
