@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from app.core.settings import get_settings
-from app.services.llm.manim_agent import _rewrite_latex_calls, _rewrite_numberline_calls
+from app.services.llm.manim_agent import (
+    _rewrite_latex_calls,
+    _rewrite_numberline_calls,
+    _rewrite_sector_calls,
+    _rewrite_unsupported_mobject_calls,
+)
 from app.services.storage import LocalStorage
 
 logger = logging.getLogger(__name__)
@@ -76,7 +81,14 @@ def _is_missing_latex_runtime(error_text: str) -> bool:
 def _rewrite_for_latexless_runtime(code: str) -> str:
     rewritten = _rewrite_latex_calls(code)
     rewritten = _rewrite_numberline_calls(rewritten)
+    rewritten = _rewrite_sector_calls(rewritten)
+    rewritten = _rewrite_unsupported_mobject_calls(rewritten)
     return rewritten
+
+
+def _is_unsupported_mobject_method(error_text: str) -> bool:
+    text = (error_text or "").lower()
+    return "has no attribute 'clip_path'" in text or "has no attribute 'set_clip_path'" in text
 
 
 async def _call_mcp_execute(code: str, timeout_seconds: int) -> tuple[bool, str]:
@@ -146,17 +158,17 @@ def render_module_video_via_mcp(
 
     workdir = storage.manim_workdir(module_id)
     lesson_path = workdir / "lesson.py"
-    code_to_render = code
+    code_to_render = _rewrite_for_latexless_runtime(code)
     lesson_path.write_text(code_to_render, encoding="utf-8")
     py_compile.compile(str(lesson_path), doraise=True)
 
     started_at = time.time()
     success, text = asyncio.run(_call_mcp_execute(code_to_render, manim_cfg.mcp_timeout_seconds))
-    if not success and _is_missing_latex_runtime(text):
+    if not success and (_is_missing_latex_runtime(text) or _is_unsupported_mobject_method(text)):
         rewritten = _rewrite_for_latexless_runtime(code_to_render)
         if rewritten != code_to_render:
             logger.warning(
-                "MCP render failed due to missing LaTeX runtime; retrying with compatibility rewrite for module %s.",
+                "MCP render failed due to runtime compatibility issue; retrying with compatibility rewrite for module %s.",
                 module_id,
             )
             code_to_render = rewritten
