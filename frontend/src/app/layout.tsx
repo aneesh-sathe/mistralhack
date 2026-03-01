@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import GlobalJobProgress from "@/components/GlobalJobProgress";
+import KeyboardShortcutsOverlay from "@/components/KeyboardShortcutsOverlay";
 import Navbar from "@/components/Navbar";
 import { ToastProvider } from "@/components/ToastProvider";
 
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <main className="inner-page">{children}</main>
             </div>
           </div>
+          <KeyboardShortcutsOverlay />
         </ToastProvider>
       </body>
     </html>

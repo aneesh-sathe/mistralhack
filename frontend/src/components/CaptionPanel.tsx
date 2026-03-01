@@ -1,8 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 import { chatWithModuleStream, getCaptions } from "@/lib/api";
+import { EmptyCaptions, EmptyChat } from "@/components/EmptyStates";
+import { staggerContainer, staggerItem } from "@/lib/animations";
 import { ModuleChatTurn } from "@/lib/types";
 
 interface CaptionPanelProps {
@@ -28,17 +31,11 @@ function parseSrt(srt: string): Segment[] {
   const blocks = srt.trim().split(/\n\s*\n/g);
   const rows: Segment[] = [];
   blocks.forEach((block, idx) => {
-    const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
+    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
     if (lines.length < 3) return;
-    const timing = lines[1];
-    const [startRaw, endRaw] = timing.split(" --> ");
+    const [startRaw, endRaw] = lines[1].split(" --> ");
     if (!startRaw || !endRaw) return;
-    rows.push({
-      index: idx,
-      start: parseTs(startRaw),
-      end: parseTs(endRaw),
-      text: lines.slice(2).join(" "),
-    });
+    rows.push({ index: idx, start: parseTs(startRaw), end: parseTs(endRaw), text: lines.slice(2).join(" ") });
   });
   return rows;
 }
@@ -52,6 +49,7 @@ export default function CaptionPanel({ moduleId, currentTime, onSeekTo }: Captio
   const [chatError, setChatError] = useState<string | null>(null);
   const [chatModel, setChatModel] = useState<string>("");
   const captionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -66,23 +64,23 @@ export default function CaptionPanel({ moduleId, currentTime, onSeekTo }: Captio
       }
     };
     load();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [moduleId]);
 
   const activeIndex = useMemo(
-    () => segments.findIndex((segment) => currentTime >= segment.start && currentTime <= segment.end),
+    () => segments.findIndex((seg) => currentTime >= seg.start && currentTime <= seg.end),
     [segments, currentTime]
   );
 
   useEffect(() => {
-    if (tab !== "captions") return;
-    if (activeIndex < 0) return;
-    const el = captionRefs.current[activeIndex];
-    if (!el) return;
-    el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (tab !== "captions" || activeIndex < 0) return;
+    captionRefs.current[activeIndex]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [activeIndex, tab]);
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatTurns]);
 
   const submitChat = async (event: FormEvent) => {
     event.preventDefault();
@@ -98,29 +96,22 @@ export default function CaptionPanel({ moduleId, currentTime, onSeekTo }: Captio
 
     try {
       await chatWithModuleStream(moduleId, message, historyForApi, {
-        onMeta: ({ model }) => {
-          if (model) setChatModel(model);
-        },
+        onMeta: ({ model }) => { if (model) setChatModel(model); },
         onToken: (delta) => {
           setChatTurns((prev) => {
             if (!prev.length) return prev;
             const next = [...prev];
-            const lastIdx = next.length - 1;
-            const last = next[lastIdx];
+            const last = next[next.length - 1];
             if (last.role !== "assistant") return prev;
-            next[lastIdx] = { ...last, content: last.content + delta };
+            next[next.length - 1] = { ...last, content: last.content + delta };
             return next;
           });
         },
       });
     } catch (err) {
       setChatTurns((prev) => {
-        if (!prev.length) return prev;
         const next = [...prev];
-        const lastIdx = next.length - 1;
-        if (next[lastIdx].role === "assistant" && !next[lastIdx].content) {
-          next.pop();
-        }
+        if (next[next.length - 1]?.role === "assistant" && !next[next.length - 1].content) next.pop();
         return next;
       });
       setChatError(err instanceof Error ? err.message : "Chat failed");
@@ -129,97 +120,138 @@ export default function CaptionPanel({ moduleId, currentTime, onSeekTo }: Captio
     }
   };
 
-  const panel = (
+  return (
     <div className="card h-full p-3">
+      {/* Tab switcher */}
       <div className="mb-3 flex gap-2 rounded-full bg-slate-100 p-1">
-        <button
-          className={`flex-1 rounded-full px-3 py-2 text-sm font-semibold transition ${
-            tab === "captions" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
-          }`}
-          onClick={() => setTab("captions")}
-        >
-          Captions
-        </button>
-        <button
-          className={`flex-1 rounded-full px-3 py-2 text-sm font-semibold transition ${
-            tab === "chat" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
-          }`}
-          onClick={() => setTab("chat")}
-        >
-          Chat
-        </button>
+        {(["captions", "chat"] as const).map((t) => (
+          <button
+            key={t}
+            className={`flex-1 rounded-full px-3 py-2 text-sm font-semibold transition ${
+              tab === t ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-800"
+            }`}
+            onClick={() => setTab(t)}
+          >
+            {t.charAt(0).toUpperCase() + t.slice(1)}
+          </button>
+        ))}
       </div>
 
-      {tab === "captions" ? (
-        <div className="h-[450px] space-y-2 overflow-y-auto pr-1">
-          {segments.map((segment, idx) => (
-            <button
-              type="button"
-              key={`${segment.index}-${segment.start}`}
-              ref={(el) => {
-                captionRefs.current[idx] = el;
-              }}
-              onClick={() => onSeekTo?.(segment.start)}
-              className={`w-full rounded-xl px-3 py-2 text-left text-sm leading-relaxed transition ${
-                idx === activeIndex
-                  ? "bg-brand-50 text-brand-700 ring-1 ring-brand-200"
-                  : "bg-slate-50 text-slate-700 hover:bg-slate-100"
-              }`}
+      {/* Captions tab */}
+      {tab === "captions" && (
+        <div className="h-[450px] overflow-y-auto pr-1">
+          {segments.length === 0 ? (
+            <EmptyCaptions />
+          ) : (
+            <motion.div
+              className="space-y-1.5"
+              variants={staggerContainer}
+              initial="hidden"
+              animate="visible"
             >
-              {segment.text}
-            </button>
-          ))}
-          {!segments.length ? <p className="text-sm text-slate-500">Captions unavailable.</p> : null}
+              {segments.map((segment, idx) => (
+                <motion.button
+                  key={`${segment.index}-${segment.start}`}
+                  ref={(el) => { captionRefs.current[idx] = el; }}
+                  type="button"
+                  variants={staggerItem}
+                  onClick={() => onSeekTo?.(segment.start)}
+                  className={`w-full rounded-xl px-3 py-2 text-left text-sm leading-relaxed transition ${
+                    idx === activeIndex
+                      ? "bg-brand-50 font-semibold text-brand-700 ring-1 ring-brand-200"
+                      : "bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  }`}
+                >
+                  {segment.text}
+                </motion.button>
+              ))}
+            </motion.div>
+          )}
         </div>
-      ) : null}
+      )}
 
-      {tab === "chat" ? (
+      {/* Chat tab */}
+      {tab === "chat" && (
         <div className="flex h-[450px] flex-col">
           <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-            {chatTurns.map((turn, index) => (
-              <div
-                key={`${turn.role}-${index}`}
-                className={`rounded-xl px-3 py-2 text-sm ${
-                  turn.role === "user"
-                    ? "ml-8 border border-brand-200 bg-brand-50 text-brand-700"
-                    : "mr-8 border border-slate-200 bg-slate-50 text-slate-800"
-                }`}
-              >
-                <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">{turn.role}</p>
-                <p className="whitespace-pre-wrap leading-relaxed">{turn.content}</p>
-              </div>
-            ))}
-            {!chatTurns.length ? (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500">
-                Ask questions about this lesson. Responses are grounded in the module content.
-              </div>
-            ) : null}
+            {chatTurns.length === 0 ? (
+              <EmptyChat />
+            ) : (
+              <AnimatePresence initial={false}>
+                {chatTurns.map((turn, index) => (
+                  <motion.div
+                    key={`${turn.role}-${index}`}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className={`rounded-xl px-3 py-2 text-sm ${
+                      turn.role === "user"
+                        ? "ml-8 border border-brand-200 bg-brand-50 text-brand-700"
+                        : "mr-8 border border-slate-200 bg-slate-50 text-slate-800"
+                    }`}
+                  >
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                      {turn.role}
+                    </p>
+                    <p className="whitespace-pre-wrap leading-relaxed">{turn.content}</p>
+                    {turn.role === "assistant" && chatBusy && index === chatTurns.length - 1 && !turn.content && (
+                      <span className="inline-flex gap-0.5">
+                        {[0, 1, 2].map((i) => (
+                          <motion.span
+                            key={i}
+                            className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400"
+                            animate={{ y: [0, -4, 0] }}
+                            transition={{ duration: 0.5, delay: i * 0.1, repeat: Infinity }}
+                          />
+                        ))}
+                      </span>
+                    )}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            )}
+            <div ref={chatBottomRef} />
           </div>
 
           <form onSubmit={submitChat} className="mt-3 space-y-2 border-t border-slate-200 pt-3">
             <textarea
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submitChat(e as unknown as FormEvent);
+                }
+              }}
               placeholder="Ask a question about this lesson..."
               rows={3}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-brand-500"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-brand-500 focus:ring-1 focus:ring-brand-100"
             />
             <div className="flex items-center justify-between gap-3">
-              <p className="truncate text-xs text-slate-500">{chatModel ? `Model: ${chatModel}` : ""}</p>
+              <p className="truncate text-xs text-slate-400">{chatModel ? `Model: ${chatModel}` : ""}</p>
               <button
                 type="submit"
                 disabled={chatBusy || !chatInput.trim()}
-                className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+                className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50 active:scale-95"
               >
                 {chatBusy ? "Sending..." : "Send"}
               </button>
             </div>
-            {chatError ? <p className="text-sm font-medium text-rose-600">{chatError}</p> : null}
+            <AnimatePresence>
+              {chatError && (
+                <motion.p
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="text-sm font-medium text-rose-600"
+                >
+                  {chatError}
+                </motion.p>
+              )}
+            </AnimatePresence>
           </form>
         </div>
-      ) : null}
+      )}
     </div>
   );
-
-  return panel;
 }

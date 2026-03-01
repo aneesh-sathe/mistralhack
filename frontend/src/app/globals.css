@@ -32,17 +32,16 @@ body {
 /* ─── Layout ─────────────────────────────────────────────── */
 .page-bg {
   min-height: 100vh;
-  padding: 42px;
 }
 
 .app-frame {
   margin: 0 auto;
   max-width: 1240px;
-  min-height: calc(100vh - 84px);
-  border: 1px solid var(--frame-border);
-  border-radius: 4px;
+  min-height: 100vh;
+  border-left: 1px solid var(--frame-border);
+  border-right: 1px solid var(--frame-border);
   background: var(--frame-bg);
-  box-shadow: 0 8px 24px rgba(18, 20, 26, 0.06);
+  box-shadow: 0 0 40px rgba(18, 20, 26, 0.06);
   overflow: hidden;
 }
 
@@ -350,14 +349,6 @@ kbd {
 
 /* ─── Responsive ──────────────────────────────────────────── */
 @media (max-width: 1024px) {
-  .page-bg {
-    padding: 12px;
-  }
-
-  .app-frame {
-    min-height: calc(100vh - 24px);
-  }
-
   .inner-page {
     padding: 16px;
   }

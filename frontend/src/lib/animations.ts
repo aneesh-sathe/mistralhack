@@ -1,9 +1,11 @@
-import type { Variants } from "framer-motion";
+import type { Variants, Transition } from "framer-motion";
 
-export const spring = { type: "spring", stiffness: 400, damping: 28 };
-export const springGentle = { type: "spring", stiffness: 260, damping: 20 };
-export const easeOut = { duration: 0.3, ease: [0.16, 1, 0.3, 1] };
+// Shared transitions
+export const spring: Transition = { type: "spring", stiffness: 400, damping: 28 };
+export const springGentle: Transition = { type: "spring", stiffness: 260, damping: 20 };
+export const easeOut: Transition = { duration: 0.3, ease: "easeOut" };
 
+// Page / section animations
 export const fadeUp: Variants = {
   hidden: { opacity: 0, y: 16 },
   visible: { opacity: 1, y: 0, transition: easeOut },
@@ -48,14 +50,14 @@ export const staggerItem: Variants = {
 
 export const pageTransition: Variants = {
   hidden: { opacity: 0, y: 10 },
-  visible: { opacity: 1, y: 0, transition: { ...easeOut, duration: 0.35 } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } },
   exit: { opacity: 0, y: -10, transition: { duration: 0.2 } },
 };
 
+// Card hover props to spread onto motion components
 export const cardHover = {
   whileHover: { y: -2, boxShadow: "0 8px 24px rgba(18,20,26,0.10)" },
   whileTap: { scale: 0.99, y: 0 },
-  transition: spring,
 };
 
 export const toastAnimation: Variants = {
