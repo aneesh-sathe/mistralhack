@@ -669,16 +669,14 @@ def _build_fallback_manim_code(scene_class_name: str, scene_contract: list[dict[
 
         target_duration = float(scene.get("target_duration_seconds", 0.0) or 0.0)
         target_duration = max(2.5, target_duration)
-        carry_forward = index > 1 and _scene_refers_previous(scene)
+        # Carry-forward disabled in fallback — stacking without total-height
+        # budget tracking causes individual shift guards to fight each other,
+        # producing overlapping or off-screen content.  Always clear.
         transition_rt = 0.28
 
         lines.append(f"        # Scene {scene_id}: {title}")
-        if index > 1 and not carry_forward:
+        if index > 1:
             lines.append("        if len(stack_group.submobjects) > 0:")
-            lines.append(f"            self.play(FadeOut(stack_group), run_time={transition_rt:.2f})")
-            lines.append("            stack_group = VGroup()")
-        elif index > 1 and carry_forward:
-            lines.append("        if len(stack_group.submobjects) > 0 and stack_group.height > safe_height * 0.72:")
             lines.append(f"            self.play(FadeOut(stack_group), run_time={transition_rt:.2f})")
             lines.append("            stack_group = VGroup()")
 
