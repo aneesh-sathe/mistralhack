@@ -32,3 +32,32 @@ def test_normalize_script_expands_operator_abbreviations_in_narration():
     assert "divided by" in full
     assert "plus" in full
     assert "minus" in full
+
+
+def test_normalize_script_does_not_corrupt_regular_words():
+    raw = {
+        "module_title": "Word Safety",
+        "scenes": [
+            {
+                "scene_id": 1,
+                "title": "Context",
+                "narration_text": "In the next real-world example, we explore 4x5 and 9-1.",
+                "on_screen_text": "",
+                "math_expressions": [],
+                "visual_instructions": "Narrate only.",
+            }
+        ],
+        "full_narration_text": "In the next real-world example, we explore 4x5 and 9-1.",
+    }
+
+    out = _normalize_script(raw, "Word Safety")
+    narration = out["scenes"][0]["narration_text"]
+    full = out["full_narration_text"]
+
+    assert "next" in narration
+    assert "real-world" in narration
+    assert "explore" in narration
+    assert "multiplied by" in narration
+    assert "minus" in narration
+    assert "multiplied by" in full
+    assert "minus" in full

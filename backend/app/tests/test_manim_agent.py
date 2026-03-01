@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.core.config import clear_config_cache
+from app.core.settings import clear_settings_cache
 from app.services.llm.manim_agent import generate_manim_code, repair_manim_code
 
 
@@ -40,7 +42,14 @@ def _timing() -> list[dict]:
     ]
 
 
-def test_generate_manim_code_rewrites_mathtex_to_text():
+def _set_manim_backend(monkeypatch, backend: str) -> None:
+    monkeypatch.setenv("MANIM_RENDER_BACKEND", backend)
+    clear_config_cache()
+    clear_settings_cache()
+
+
+def test_generate_manim_code_rewrites_mathtex_to_text(monkeypatch):
+    _set_manim_backend(monkeypatch, "local")
     llm = _FakeLLM(
         "from manim import *\n"
         "class LessonScene(Scene):\n"
@@ -68,7 +77,24 @@ def test_generate_manim_code_rewrites_mathtex_to_text():
     assert "add_numbers(" not in code
 
 
-def test_repair_manim_code_rewrites_tex_to_text():
+def test_generate_manim_code_mcp_keeps_model_output(monkeypatch):
+    _set_manim_backend(monkeypatch, "mcp")
+    llm = _FakeLLM(
+        "from manim import *\n"
+        "class LessonScene(Scene):\n"
+        "    def construct(self):\n"
+        "        eq = MathTex('10 - (-5) = 15', font_size=36)\n"
+        "        self.play(Write(eq))\n"
+        "        self.wait(1)\n"
+    )
+
+    code = generate_manim_code(_script_json(), _timing(), "LessonScene", llm)
+    assert "MathTex(" in code
+    assert "AddTextLetterByLetter(" not in code
+
+
+def test_repair_manim_code_rewrites_tex_to_text(monkeypatch):
+    _set_manim_backend(monkeypatch, "local")
     llm = _FakeLLM(
         "from manim import *\n"
         "class LessonScene(Scene):\n"
@@ -99,3 +125,25 @@ def test_repair_manim_code_rewrites_tex_to_text():
     assert "MathTex(" not in code
     assert "Tex(" not in code
     assert "Text(" in code
+
+
+def test_repair_manim_code_mcp_keeps_model_output(monkeypatch):
+    _set_manim_backend(monkeypatch, "mcp")
+    llm = _FakeLLM(
+        "from manim import *\n"
+        "class LessonScene(Scene):\n"
+        "    def construct(self):\n"
+        "        label = Tex('10 - (-5) = 15')\n"
+        "        self.play(FadeIn(label))\n"
+        "        self.wait(1)\n"
+    )
+
+    code = repair_manim_code(
+        _script_json(),
+        _timing(),
+        current_code="broken",
+        error_log="Some MCP error",
+        scene_class_name="LessonScene",
+        llm_provider=llm,
+    )
+    assert "Tex(" in code

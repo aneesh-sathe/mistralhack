@@ -4,12 +4,28 @@ import ast
 import re
 from typing import Any
 
+from app.core.settings import get_settings
 from app.services.llm.base import LLMProvider
 from app.services.llm.manim_docs import get_manim_docs_context
-from app.services.llm.prompts import manim_code_prompt, manim_repair_prompt, manim_storyboard_prompt
+from app.services.llm.prompts import (
+    manim_code_prompt,
+    manim_code_prompt_mcp,
+    manim_repair_prompt,
+    manim_repair_prompt_mcp,
+    manim_storyboard_prompt,
+)
 
 _LATEX_MOBJECT_NAMES = {"MathTex", "Tex", "SingleStringMathTex"}
 _ALLOWED_TEXT_KWARGS = {"font_size", "color"}
+
+
+def _is_mcp_backend() -> bool:
+    try:
+        settings = get_settings()
+        backend = (settings.config.manim.render_backend or "local").strip().lower()
+        return backend == "mcp"
+    except Exception:
+        return False
 
 
 def _strip_code_fences(code: str) -> str:
@@ -41,6 +57,34 @@ def _rewrite_latex_calls(code: str) -> str:
             nonlocal changed
             node = self.generic_visit(node)
             name = _call_name(node)
+            if name == "BulletedList":
+                changed = True
+                if not node.args:
+                    return ast.Call(func=ast.Name(id="VGroup", ctx=ast.Load()), args=[], keywords=[])
+
+                text_items: list[ast.expr] = []
+                for arg in node.args:
+                    bullet_text = ast.BinOp(
+                        left=ast.Constant(value="• "),
+                        op=ast.Add(),
+                        right=ast.Call(func=ast.Name(id="str", ctx=ast.Load()), args=[arg], keywords=[]),
+                    )
+                    text_items.append(
+                        ast.Call(
+                            func=ast.Name(id="Text", ctx=ast.Load()),
+                            args=[bullet_text],
+                            keywords=[kw for kw in node.keywords if kw.arg in _ALLOWED_TEXT_KWARGS],
+                        )
+                    )
+                return ast.Call(func=ast.Name(id="VGroup", ctx=ast.Load()), args=text_items, keywords=[])
+
+            if name in {"DecimalNumber", "Integer"}:
+                has_mob_class = any(kw.arg == "mob_class" for kw in node.keywords)
+                if not has_mob_class:
+                    node.keywords.append(ast.keyword(arg="mob_class", value=ast.Name(id="Text", ctx=ast.Load())))
+                    changed = True
+                return node
+
             if name not in _LATEX_MOBJECT_NAMES:
                 return node
 
@@ -81,6 +125,9 @@ def _rewrite_numberline_calls(code: str) -> str:
             nonlocal changed
             node = self.generic_visit(node)
             name = _call_name(node)
+            if name == "add_numbers":
+                changed = True
+                return ast.Call(func=ast.Name(id="VGroup", ctx=ast.Load()), args=[], keywords=[])
             if name != "NumberLine":
                 return node
 
@@ -94,6 +141,9 @@ def _rewrite_numberline_calls(code: str) -> str:
                 if not (isinstance(include_kw.value, ast.Constant) and include_kw.value.value is False):
                     include_kw.value = ast.Constant(value=False)
                     changed = True
+            else:
+                node.keywords.append(ast.keyword(arg="include_numbers", value=ast.Constant(value=False)))
+                changed = True
             return node
 
     rewritten = NumberLineTransformer().visit(tree)
@@ -349,6 +399,17 @@ def _build_fallback_manim_code(scene_class_name: str, scene_contract: list[dict[
     lines.append("")
     lines.append(f"class {scene_class_name}(Scene):")
     lines.append("    def construct(self):")
+    lines.append("        safe_width = config.frame_width - 1.2")
+    lines.append("        safe_height = config.frame_height - 0.9")
+    lines.append("        safe_bottom = (-config.frame_height / 2) + 0.45")
+    lines.append("")
+    lines.append("        def fit_to_frame(mobj):")
+    lines.append("            if mobj.width > safe_width:")
+    lines.append("                mobj.scale_to_fit_width(safe_width)")
+    lines.append("            if mobj.height > safe_height:")
+    lines.append("                mobj.scale_to_fit_height(safe_height)")
+    lines.append("            return mobj")
+    lines.append("")
     lines.append("        stack_group = VGroup()")
 
     for index, scene in enumerate(scene_contract, start=1):
@@ -356,9 +417,9 @@ def _build_fallback_manim_code(scene_class_name: str, scene_contract: list[dict[
         group = f"scene_{scene_id}_group"
         title_var = f"title_{scene_id}"
         title = _clip_for_display(str(scene.get("title", f"Scene {scene_id}")), 70) or f"Scene {scene_id}"
-        narration = _clip_for_display(str(scene.get("narration_text", "")), 190)
-        on_screen_text = _clip_for_display(str(scene.get("on_screen_text", "")), 140)
-        expressions = [_clip_for_display(str(x), 110) for x in scene.get("math_expressions", []) if str(x).strip()]
+        narration = _clip_for_display(str(scene.get("narration_text", "")), 150)
+        on_screen_text = _clip_for_display(str(scene.get("on_screen_text", "")), 100)
+        expressions = [_clip_for_display(str(x), 84) for x in scene.get("math_expressions", []) if str(x).strip()]
 
         target_duration = float(scene.get("target_duration_seconds", 0.0) or 0.0)
         target_duration = max(2.5, target_duration)
@@ -372,14 +433,19 @@ def _build_fallback_manim_code(scene_class_name: str, scene_contract: list[dict[
             lines.append("            stack_group = VGroup()")
 
         lines.append(f"        {group} = VGroup()")
-        lines.append(f"        {title_var} = Text({_py_literal(title)}, font_size=36)")
+        lines.append(f"        {title_var} = fit_to_frame(Text({_py_literal(title)}, font_size=34))")
         lines.append(f"        {group}.add({title_var})")
         lines.append("        if len(stack_group.submobjects) == 0:")
         lines.append(f"            {title_var}.to_edge(UP, buff=0.6)")
         lines.append("        else:")
         lines.append(f"            {title_var}.next_to(stack_group, DOWN, aligned_edge=LEFT, buff=0.42)")
+        lines.append(f"        if {title_var}.get_bottom()[1] < safe_bottom:")
+        lines.append(f"            {title_var}.shift(UP * (safe_bottom - {title_var}.get_bottom()[1]))")
         lines.append(f"        self.play(AddTextLetterByLetter({title_var}, time_per_char=0.02), run_time=0.6)")
-        lines.append(f"        underline_{scene_id} = Line(LEFT * 2.8, RIGHT * 2.8).next_to({title_var}, DOWN, buff=0.18)")
+        lines.append(f"        underline_width_{scene_id} = min(max(3.8, {title_var}.width + 0.5), safe_width)")
+        lines.append(
+            f"        underline_{scene_id} = Line(LEFT * (underline_width_{scene_id} / 2), RIGHT * (underline_width_{scene_id} / 2)).next_to({title_var}, DOWN, buff=0.18)"
+        )
         lines.append(f"        {group}.add(underline_{scene_id})")
         lines.append(f"        self.play(Create(underline_{scene_id}), run_time=0.2)")
 
@@ -393,20 +459,24 @@ def _build_fallback_manim_code(scene_class_name: str, scene_contract: list[dict[
             display_lines.append(narration)
         if not display_lines:
             display_lines.append(title)
+        if len(display_lines) > 3:
+            display_lines = display_lines[:3]
 
         line_rt = max(0.42, min(0.95, target_duration / max(3, len(display_lines) + 2)))
         for line_idx, line_text in enumerate(display_lines):
             text_var = f"line_{scene_id}_{line_idx}"
-            lines.append(
-                f"        {text_var} = Text({_py_literal(line_text)}, font_size=30).next_to({line_var_prev}, DOWN, aligned_edge=LEFT, buff=0.32)"
-            )
+            lines.append(f"        {text_var} = fit_to_frame(Text({_py_literal(line_text)}, font_size=28))")
+            lines.append(f"        {text_var}.next_to({line_var_prev}, DOWN, aligned_edge=LEFT, buff=0.30)")
+            lines.append(f"        if {text_var}.get_bottom()[1] < safe_bottom:")
+            lines.append(f"            {text_var}.shift(UP * (safe_bottom - {text_var}.get_bottom()[1]))")
             lines.append(f"        {group}.add({text_var})")
             lines.append(f"        self.play(AddTextLetterByLetter({text_var}, time_per_char=0.014), run_time={line_rt:.2f})")
             line_var_prev = text_var
 
         lines.append(f"        stack_group.add({group})")
-        lines.append("        if stack_group.get_bottom()[1] < -3.4:")
-        lines.append("            self.play(stack_group.animate.shift(UP * 0.8), run_time=0.2)")
+        lines.append("        if stack_group.get_bottom()[1] < safe_bottom:")
+        lines.append("            overflow = safe_bottom - stack_group.get_bottom()[1]")
+        lines.append("            self.play(stack_group.animate.shift(UP * (overflow + 0.08)), run_time=0.2)")
 
         consumed = 0.6 + 0.2 + (line_rt * len(display_lines))
         wait_rt = max(0.2, target_duration - consumed)
@@ -425,17 +495,29 @@ def generate_manim_code(
 ) -> str:
     scene_contract = _build_scene_contract(script_json, timing_alignment)
     storyboard = _generate_storyboard(script_json, timing_alignment, scene_contract, llm_provider)
-    docs_context = get_manim_docs_context()
-    prompt = manim_code_prompt(
-        scene_class_name,
-        script_json,
-        docs_context,
-        timing_alignment,
-        scene_contract,
-        storyboard,
-    )
+    use_mcp_backend = _is_mcp_backend()
+    if use_mcp_backend:
+        prompt = manim_code_prompt_mcp(
+            scene_class_name,
+            script_json,
+            timing_alignment,
+            storyboard,
+        )
+    else:
+        docs_context = get_manim_docs_context()
+        prompt = manim_code_prompt(
+            scene_class_name,
+            script_json,
+            docs_context,
+            timing_alignment,
+            scene_contract,
+            storyboard,
+        )
 
     code = _strip_code_fences(llm_provider.generate_code(prompt))
+    if use_mcp_backend:
+        return code
+
     code = _rewrite_latex_calls(code)
     code = _rewrite_numberline_calls(code)
     try:
@@ -457,20 +539,34 @@ def repair_manim_code(
 ) -> str:
     scene_contract = _build_scene_contract(script_json, timing_alignment)
     storyboard = _generate_storyboard(script_json, timing_alignment, scene_contract, llm_provider)
-    validation_errors = _collect_validation_errors(current_code, scene_class_name, scene_contract)
-    docs_context = get_manim_docs_context()
-    prompt = manim_repair_prompt(
-        scene_class_name,
-        script_json,
-        timing_alignment,
-        scene_contract,
-        storyboard,
-        current_code,
-        error_log,
-        validation_errors,
-        docs_context,
-    )
+    use_mcp_backend = _is_mcp_backend()
+    if use_mcp_backend:
+        prompt = manim_repair_prompt_mcp(
+            scene_class_name,
+            script_json,
+            timing_alignment,
+            storyboard,
+            current_code,
+            error_log,
+        )
+    else:
+        validation_errors = _collect_validation_errors(current_code, scene_class_name, scene_contract)
+        docs_context = get_manim_docs_context()
+        prompt = manim_repair_prompt(
+            scene_class_name,
+            script_json,
+            timing_alignment,
+            scene_contract,
+            storyboard,
+            current_code,
+            error_log,
+            validation_errors,
+            docs_context,
+        )
     repaired = _strip_code_fences(llm_provider.generate_code(prompt))
+    if use_mcp_backend:
+        return repaired
+
     repaired = _rewrite_latex_calls(repaired)
     repaired = _rewrite_numberline_calls(repaired)
     try:

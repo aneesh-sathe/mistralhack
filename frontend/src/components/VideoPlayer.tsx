@@ -16,7 +16,7 @@ export default function VideoPlayer({ moduleId, onTimeUpdate }: VideoPlayerProps
     <div className="card overflow-hidden border-slate-200 p-3">
       <video
         ref={ref}
-        className="aspect-video w-full rounded-2xl border border-slate-200 bg-black"
+        className="aspect-video w-full rounded-2xl border border-slate-200 bg-black object-contain"
         controls
         crossOrigin="use-credentials"
         src={videoUrl(moduleId)}

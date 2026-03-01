@@ -7,6 +7,7 @@ import JobProgress from "@/components/JobProgress";
 import VideoPlayer from "@/components/VideoPlayer";
 import { Button } from "@/components/ui/button";
 import { generateModule, getModule, getModuleAssets } from "@/lib/api";
+import { trackedGenerationJobForModule, trackGenerationJob, untrackGenerationJob } from "@/lib/jobTracker";
 import { JobItem, ModuleAssets, ModuleItem } from "@/lib/types";
 
 function statusTone(status: ModuleItem["status"] | undefined): string {
@@ -44,17 +45,34 @@ export default function ModulePage({ params }: { params: { moduleId: string } })
     load();
   }, [load]);
 
+  useEffect(() => {
+    const tracked = trackedGenerationJobForModule(moduleId);
+    if (tracked?.jobId) {
+      setJobId(tracked.jobId);
+      return;
+    }
+    setJobId(null);
+  }, [moduleId]);
+
   const startGeneration = async () => {
     try {
       const res = await generateModule(moduleId);
       setJobId(res.job_id);
+      trackGenerationJob({
+        jobId: res.job_id,
+        moduleId,
+        moduleTitle: module?.title,
+        createdAt: new Date().toISOString(),
+      });
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start generation");
     }
   };
 
-  const onJobComplete = async (_job: JobItem) => {
+  const onJobComplete = async (job: JobItem) => {
+    untrackGenerationJob(job.id);
+    setJobId(null);
     await load();
   };
 

@@ -7,7 +7,7 @@ from app.services.llm.base import LLMProvider
 from app.services.llm.prompts import script_generation_prompt
 
 
-_TOKEN_PATTERN = r"(?:\(?-?[A-Za-z0-9]+(?:\.[0-9]+)?\)?)"
+_TOKEN_PATTERN = r"(?:\(?-?\d+(?:\.\d+)?\)?)"
 _BINARY_OP_PATTERN = re.compile(
     rf"(?<![A-Za-z0-9_])({_TOKEN_PATTERN})\s*([+\-*/xX×÷])\s*({_TOKEN_PATTERN})(?![A-Za-z0-9_])"
 )

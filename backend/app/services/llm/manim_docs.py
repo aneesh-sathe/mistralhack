@@ -16,6 +16,17 @@ Manim Community Edition quick reference:
 - Layout helpers:
   mobject.next_to(other, DOWN), mobject.to_edge(UP), mobject.shift(RIGHT*...), mobject.scale(...), VGroup(...).arrange(DOWN, buff=...)
   Keep generous spacing between lines/elements to avoid overlap; prefer buff ~0.25 to 0.45.
+- Frame safety:
+  Keep all content inside the camera frame with a margin.
+  A safe helper is:
+    SAFE_W = config.frame_width - 1.0
+    SAFE_H = config.frame_height - 0.8
+    def fit_to_frame(m):
+      m.scale_to_fit_width(SAFE_W)
+      if m.height > SAFE_H:
+        m.scale_to_fit_height(SAFE_H)
+      return m
+  Run fit_to_frame(...) on Text/diagrams before animating.
 - Animations with self.play:
   FadeIn(m), FadeOut(m), Write(m), Create(m), Transform(a, b), ReplacementTransform(a, b), Indicate(m), Circumscribe(m), AddTextLetterByLetter(text_mobject)
 - Timing:

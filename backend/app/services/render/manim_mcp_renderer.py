@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.settings import get_settings
+from app.services.llm.manim_agent import _rewrite_latex_calls, _rewrite_numberline_calls
 from app.services.storage import LocalStorage
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,23 @@ def _find_latest_mp4(media_dir: Path, started_after: float) -> Path | None:
     return candidates[0]
 
 
+def _is_missing_latex_runtime(error_text: str) -> bool:
+    text = (error_text or "").lower()
+    if "no such file or directory: 'latex'" in text:
+        return True
+    if "filenotfounderror" in text and "latex" in text:
+        return True
+    if "tex_to_svg_file" in text and "latex" in text:
+        return True
+    return False
+
+
+def _rewrite_for_latexless_runtime(code: str) -> str:
+    rewritten = _rewrite_latex_calls(code)
+    rewritten = _rewrite_numberline_calls(rewritten)
+    return rewritten
+
+
 async def _call_mcp_execute(code: str, timeout_seconds: int) -> tuple[bool, str]:
     try:
         from mcp import ClientSession, StdioServerParameters
@@ -81,10 +99,23 @@ async def _call_mcp_execute(code: str, timeout_seconds: int) -> tuple[bool, str]
     async with stdio_client(server) as (read_stream, write_stream):
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
-            tool_result = await asyncio.wait_for(
-                session.call_tool("execute_manim_code", {"code": code}),
-                timeout=timeout_seconds,
-            )
+            # Support both common parameter names used by different MCP server variants.
+            # `abhiemj/manim-mcp-server` expects `manim_code`, while some servers use `code`.
+            tool_result = None
+            call_errors: list[str] = []
+            for payload in ({"manim_code": code}, {"code": code}):
+                try:
+                    tool_result = await asyncio.wait_for(
+                        session.call_tool("execute_manim_code", payload),
+                        timeout=timeout_seconds,
+                    )
+                    break
+                except Exception as exc:
+                    call_errors.append(str(exc))
+
+            if tool_result is None:
+                joined = "\n".join(call_errors)
+                raise RuntimeError(f"Failed to call MCP tool execute_manim_code:\n{joined}")
 
             text = _extract_mcp_text(tool_result)
             is_error = bool(getattr(tool_result, "isError", False))
@@ -115,11 +146,23 @@ def render_module_video_via_mcp(
 
     workdir = storage.manim_workdir(module_id)
     lesson_path = workdir / "lesson.py"
-    lesson_path.write_text(code, encoding="utf-8")
+    code_to_render = code
+    lesson_path.write_text(code_to_render, encoding="utf-8")
     py_compile.compile(str(lesson_path), doraise=True)
 
     started_at = time.time()
-    success, text = asyncio.run(_call_mcp_execute(code, manim_cfg.mcp_timeout_seconds))
+    success, text = asyncio.run(_call_mcp_execute(code_to_render, manim_cfg.mcp_timeout_seconds))
+    if not success and _is_missing_latex_runtime(text):
+        rewritten = _rewrite_for_latexless_runtime(code_to_render)
+        if rewritten != code_to_render:
+            logger.warning(
+                "MCP render failed due to missing LaTeX runtime; retrying with compatibility rewrite for module %s.",
+                module_id,
+            )
+            code_to_render = rewritten
+            lesson_path.write_text(code_to_render, encoding="utf-8")
+            py_compile.compile(str(lesson_path), doraise=True)
+            success, text = asyncio.run(_call_mcp_execute(code_to_render, manim_cfg.mcp_timeout_seconds))
     if not success:
         raise RuntimeError(f"manim-mcp-server execution failed:\n{text}")
 

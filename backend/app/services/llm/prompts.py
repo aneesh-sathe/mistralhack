@@ -22,8 +22,9 @@ def script_generation_prompt(module_title: str, module_summary: str, chunk_text:
         "on_screen_text:string, math_expressions:string[], visual_instructions:string}\n"
         "- full_narration_text: string\n"
         "Rules: 3-6 scenes, concise and pedagogical, transitions explicit in narration. "
-        "For narration_text and full_narration_text: NEVER use symbolic operator abbreviations. "
-        "Write operations in words (example: '4 multiplied by 5', '10 divided by 2', '7 plus 3', '9 minus 1'). "
+        "For arithmetic expressions with numbers, write operators in words "
+        "(example: '4 multiplied by 5', '10 divided by 2', '7 plus 3', '9 minus 1'). "
+        "Do not alter normal words that contain letters like x or hyphens (for example: 'next', 'real-world', 'explore'). "
         "full_narration_text must concatenate scene narration in order.\n"
         "No markdown, only JSON.\n\n"
         f"Module title: {module_title}\n"
@@ -53,10 +54,29 @@ def manim_code_prompt(
         "otherwise transition cleanly.\n"
         "4) Keep ample spacing between visual elements and successive animations. "
         "Use clear vertical gaps (buff around 0.25-0.45) and avoid overlapping text/equations unless explicitly replacing one item.\n"
-        "5) Use run_time/wait so each scene approximately matches timing_alignment.duration_seconds.\n"
+        "5) Keep visuals inside the camera frame. Use config.frame_width/config.frame_height safe margins "
+        "(for example width <= config.frame_width - 1.0) and clamp/reposition objects that approach edges.\n"
+        "6) Use run_time/wait so each scene approximately matches timing_alignment.duration_seconds.\n"
         "No markdown.\n\n"
         f"Manim documentation context:\n{manim_docs_context}\n\n"
         f"Scene contract JSON (must be followed exactly):\n{json.dumps(scene_contract, indent=2)}\n\n"
+        f"Storyboard JSON:\n{json.dumps(storyboard, indent=2)}\n\n"
+        f"Timing alignment JSON (seconds):\n{json.dumps(timing_alignment, indent=2)}\n\n"
+        f"Script JSON:\n{json.dumps(script_json, indent=2)}"
+    )
+
+
+def manim_code_prompt_mcp(
+    scene_class_name: str,
+    script_json: dict,
+    timing_alignment: list[dict],
+    storyboard: dict,
+) -> str:
+    return (
+        "Write Python Manim Community Edition code for a lesson video. "
+        f"Return ONLY Python code for a single class named {scene_class_name} inheriting Scene. "
+        "Target runtime is manim-mcp-server (MCP tool execute_manim_code). "
+        "Use your own best Manim choices for pedagogy, visuals, and pacing.\n\n"
         f"Storyboard JSON:\n{json.dumps(storyboard, indent=2)}\n\n"
         f"Timing alignment JSON (seconds):\n{json.dumps(timing_alignment, indent=2)}\n\n"
         f"Script JSON:\n{json.dumps(script_json, indent=2)}"
@@ -82,13 +102,34 @@ def manim_repair_prompt(
         "Preserve scene-to-audio pacing from timing_alignment. "
         "Reveal instructional text character-by-character with AddTextLetterByLetter. "
         "If script scene references prior context, keep previous content and build below it. "
-        "Increase spacing to avoid overlap: keep generous vertical gaps and do not place new objects on top of existing ones unless replacing.\n\n"
+        "Increase spacing to avoid overlap: keep generous vertical gaps and do not place new objects on top of existing ones unless replacing. "
+        "Keep all objects within frame bounds using safe margins from config.frame_width/config.frame_height.\n\n"
         f"Manim documentation context:\n{manim_docs_context}\n\n"
         f"Scene contract JSON:\n{json.dumps(scene_contract, indent=2)}\n\n"
         f"Storyboard JSON:\n{json.dumps(storyboard, indent=2)}\n\n"
         f"Timing alignment JSON (seconds):\n{json.dumps(timing_alignment, indent=2)}\n\n"
         f"Script JSON:\n{json.dumps(script_json, indent=2)}\n\n"
         f"Validation errors to fix:\n{json.dumps(validation_errors, indent=2)}\n\n"
+        f"Current code:\n{current_code}\n\n"
+        f"Error log:\n{error_log}"
+    )
+
+
+def manim_repair_prompt_mcp(
+    scene_class_name: str,
+    script_json: dict,
+    timing_alignment: list[dict],
+    storyboard: dict,
+    current_code: str,
+    error_log: str,
+) -> str:
+    return (
+        "Repair this Manim code so it executes successfully in manim-mcp-server. "
+        f"Return ONLY corrected Python code for class {scene_class_name}. "
+        "Use your own best Manim choices for visuals and pacing.\n\n"
+        f"Storyboard JSON:\n{json.dumps(storyboard, indent=2)}\n\n"
+        f"Timing alignment JSON (seconds):\n{json.dumps(timing_alignment, indent=2)}\n\n"
+        f"Script JSON:\n{json.dumps(script_json, indent=2)}\n\n"
         f"Current code:\n{current_code}\n\n"
         f"Error log:\n{error_log}"
     )

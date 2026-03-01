@@ -305,5 +305,6 @@ def generate_module_assets_job_runner(job_id: str, module_id: str) -> None:
         if job is not None:
             set_job_state(job, status=JobStatus.failed, stage="FAILED", percent=100, error=str(exc))
         db.commit()
+        raise
     finally:
         db.close()
