@@ -65,6 +65,10 @@ export function getModule(moduleId: string) {
   return request<ModuleItem>(`/api/modules/${moduleId}`);
 }
 
+export function deleteModule(moduleId: string) {
+  return request<void>(`/api/modules/${moduleId}`, { method: "DELETE" });
+}
+
 export function generateModule(moduleId: string) {
   return request<{ job_id: string }>(`/api/modules/${moduleId}/generate`, { method: "POST" });
 }

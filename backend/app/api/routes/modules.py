@@ -4,8 +4,8 @@ import json
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,7 @@ from app.db.session import get_db
 from app.services.llm.openai_provider import OpenAICompatibleProvider
 from app.services.llm.prompts import module_chat_system_prompt
 from app.services.pipeline.generate_module_assets_job import enqueue_generate_module_assets_job
+from app.services.storage import LocalStorage
 
 router = APIRouter(prefix="/api/modules", tags=["modules"])
 
@@ -143,6 +144,22 @@ def get_module_assets(module_id: str, db: Session = Depends(get_db), user: User 
         raise HTTPException(status_code=404, detail="Module assets not found")
 
     return _serialize_assets(asset)
+
+
+@router.delete("/{module_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_module(module_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    module = _get_owned_module(db, module_id, str(user.id))
+    if module is None:
+        raise HTTPException(status_code=404, detail="Module not found")
+    if module.status == ModuleStatus.GENERATING:
+        raise HTTPException(status_code=409, detail="Cannot delete a module while generation is running")
+
+    storage = LocalStorage()
+    storage.delete_module_files(str(module.id))
+
+    db.delete(module)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{module_id}/chat")

@@ -1,14 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useToast } from "@/components/ToastProvider";
 import { getJob } from "@/lib/api";
+import { clampPercent, formatStageLabel, statusLabel } from "@/lib/jobStages";
 import {
   activeGenerationJobsEventName,
-  readTrackedGenerationJobs,
-  TrackedGenerationJob,
-  untrackGenerationJob,
+  readTrackedJobs,
+  TrackedJob,
+  untrackJob,
 } from "@/lib/jobTracker";
 import { JobItem } from "@/lib/types";
 
@@ -20,18 +23,26 @@ function tone(status: JobItem["status"] | "loading"): string {
   return "bg-slate-100 text-slate-700";
 }
 
-function shortModuleLabel(job: TrackedGenerationJob): string {
-  if (job.moduleTitle) return job.moduleTitle;
-  return `Module ${job.moduleId.slice(0, 8)}`;
+function activityLabel(job: TrackedJob): string {
+  if (job.title) return job.title;
+  const prefix = job.entityType === "module" ? "Module" : "Document";
+  return `${prefix} ${job.entityId.slice(0, 8)}`;
+}
+
+function activityHref(job: TrackedJob): string {
+  if (job.entityType === "module") return `/modules/${job.entityId}`;
+  return `/documents/${job.entityId}`;
 }
 
 export default function GlobalJobProgress() {
-  const [tracked, setTracked] = useState<TrackedGenerationJob[]>([]);
+  const [tracked, setTracked] = useState<TrackedJob[]>([]);
   const [jobsById, setJobsById] = useState<Record<string, JobItem>>({});
   const [errorById, setErrorById] = useState<Record<string, string>>({});
+  const { notify } = useToast();
+  const router = useRouter();
 
   const refreshTracked = useCallback(() => {
-    setTracked(readTrackedGenerationJobs());
+    setTracked(readTrackedJobs());
   }, []);
 
   useEffect(() => {
@@ -83,7 +94,34 @@ export default function GlobalJobProgress() {
 
       if (completed.length) {
         for (const jobId of completed) {
-          untrackGenerationJob(jobId);
+          const entry = tracked.find((item) => item.jobId === jobId);
+          const completedJob = nextJobs[jobId];
+
+          if (entry && completedJob) {
+            const success = completedJob.status === "succeeded";
+            notify({
+              title: success
+                ? entry.entityType === "module"
+                  ? "Lesson ready"
+                  : "Document processed"
+                : entry.entityType === "module"
+                  ? "Lesson generation failed"
+                  : "Document processing failed",
+              description: activityLabel(entry),
+              tone: success ? "success" : "error",
+              action: {
+                label: success
+                  ? entry.entityType === "module"
+                    ? "Open lesson"
+                    : "Open modules"
+                  : "View details",
+                onClick: () => router.push(activityHref(entry)),
+              },
+              dedupeKey: `job-complete-${jobId}`,
+            });
+          }
+
+          untrackJob(jobId);
         }
       }
     };
@@ -94,7 +132,7 @@ export default function GlobalJobProgress() {
       active = false;
       if (intervalId) clearInterval(intervalId);
     };
-  }, [tracked]);
+  }, [notify, router, tracked]);
 
   const visible = useMemo(
     () => [...tracked].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
@@ -106,31 +144,31 @@ export default function GlobalJobProgress() {
   return (
     <div className="mx-auto w-full max-w-[1110px] px-4 pb-2 pt-4 sm:px-6">
       <div className="surface-muted p-3">
-        <div className="mb-3 text-xs font-bold uppercase tracking-[0.08em] text-slate-500">Generation In Progress</div>
+        <div className="mb-3 text-xs font-bold uppercase tracking-[0.08em] text-slate-500">Background Activity</div>
         <div className="space-y-2">
           {visible.map((entry) => {
             const job = jobsById[entry.jobId];
             const error = errorById[entry.jobId];
             const status = job?.status || "loading";
-            const stage = job?.progress?.stage || "queued";
-            const percent = job?.progress?.percent ?? 0;
+            const stage = formatStageLabel(job?.progress?.stage);
+            const percent = clampPercent(job?.progress?.percent);
 
             return (
               <div key={entry.jobId} className="rounded-xl border border-slate-200 bg-white p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <Link href={`/modules/${entry.moduleId}`} className="text-sm font-semibold text-slate-700 hover:text-slate-900">
-                    {shortModuleLabel(entry)}
+                  <Link href={activityHref(entry)} className="text-sm font-semibold text-slate-700 hover:text-slate-900">
+                    {activityLabel(entry)}
                   </Link>
-                  <span className={`status-pill ${tone(status)}`}>{status}</span>
+                  <span className={`status-pill ${tone(status)}`}>{statusLabel(status)}</span>
                 </div>
                 <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold text-slate-600">
                   <span>{stage}</span>
-                  <span>{Math.min(100, Math.max(0, percent))}%</span>
+                  <span>{percent}%</span>
                 </div>
                 <div className="h-2 w-full rounded-full bg-slate-200">
                   <div
                     className="h-2 rounded-full bg-brand-500 transition-all duration-500"
-                    style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+                    style={{ width: `${percent}%` }}
                   />
                 </div>
                 {error ? <p className="mt-2 text-xs font-medium text-rose-700">{error}</p> : null}

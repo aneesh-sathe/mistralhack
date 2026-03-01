@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { getJob } from "@/lib/api";
+import { clampPercent, formatStageLabel, statusLabel } from "@/lib/jobStages";
 import { JobItem } from "@/lib/types";
 
 interface JobProgressProps {
@@ -71,21 +72,22 @@ export default function JobProgress({ jobId, onComplete }: JobProgressProps) {
   }
 
   const percent = job.progress?.percent ?? 0;
-  const stage = job.progress?.stage || "queued";
+  const stage = formatStageLabel(job.progress?.stage);
+  const clampedPercent = clampPercent(percent);
 
   return (
     <div className="surface-muted p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className={`status-pill ${tone(job.status)}`}>{job.status}</span>
+          <span className={`status-pill ${tone(job.status)}`}>{statusLabel(job.status)}</span>
           <span className="text-sm font-semibold text-slate-700">{stage}</span>
         </div>
-        <span className="text-sm font-bold text-slate-700">{percent}%</span>
+        <span className="text-sm font-bold text-slate-700">{clampedPercent}%</span>
       </div>
       <div className="h-2 w-full rounded-full bg-slate-200">
         <div
           className="h-2 rounded-full bg-brand-500 transition-all duration-500"
-          style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+          style={{ width: `${clampedPercent}%` }}
         />
       </div>
       {job.error ? <p className="mt-3 text-sm font-medium text-rose-700">{job.error}</p> : null}

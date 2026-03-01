@@ -55,21 +55,24 @@ class LocalStorage:
         path.write_bytes(payload)
         return path
 
+    def delete_module_files(self, module_id: str) -> None:
+        for path in [
+            self.audio_path(module_id),
+            self.captions_path(module_id),
+            self.video_path(module_id),
+            self.final_path(module_id),
+        ]:
+            if path.exists():
+                path.unlink()
+
+        manim_dir = self.manim_dir / module_id
+        if manim_dir.exists():
+            shutil.rmtree(manim_dir, ignore_errors=True)
+
     def delete_document_files(self, document_id: str, module_ids: list[str]) -> None:
         pdf = self.pdf_path(document_id)
         if pdf.exists():
             pdf.unlink()
 
         for module_id in module_ids:
-            for path in [
-                self.audio_path(module_id),
-                self.captions_path(module_id),
-                self.video_path(module_id),
-                self.final_path(module_id),
-            ]:
-                if path.exists():
-                    path.unlink()
-
-            manim_dir = self.manim_dir / module_id
-            if manim_dir.exists():
-                shutil.rmtree(manim_dir, ignore_errors=True)
+            self.delete_module_files(module_id)

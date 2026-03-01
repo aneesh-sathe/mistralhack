@@ -6,6 +6,8 @@ import { ModuleItem } from "@/lib/types";
 
 interface ModuleListProps {
   modules: ModuleItem[];
+  deletingModuleId?: string | null;
+  onDeleteModule?: (module: ModuleItem) => void;
 }
 
 function statusStyle(status: ModuleItem["status"]): string {
@@ -15,7 +17,7 @@ function statusStyle(status: ModuleItem["status"]): string {
   return "bg-slate-100 text-slate-700";
 }
 
-export default function ModuleList({ modules }: ModuleListProps) {
+export default function ModuleList({ modules, deletingModuleId = null, onDeleteModule }: ModuleListProps) {
   if (!modules.length) {
     return <div className="card p-5 text-sm text-slate-600">No modules extracted yet for this document.</div>;
   }
@@ -29,12 +31,24 @@ export default function ModuleList({ modules }: ModuleListProps) {
             <span className={`status-pill ${statusStyle(module.status)}`}>{module.status}</span>
           </div>
           <p className="mb-4 text-sm leading-relaxed text-slate-600">{module.summary}</p>
-          <Link
-            className="inline-flex items-center rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-700 hover:text-slate-900"
-            href={`/modules/${module.id}`}
-          >
-            Open lesson
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              className="inline-flex items-center rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-700 hover:text-slate-900"
+              href={`/modules/${module.id}`}
+            >
+              Open lesson
+            </Link>
+            {onDeleteModule ? (
+              <button
+                type="button"
+                disabled={deletingModuleId === module.id || module.status === "GENERATING"}
+                onClick={() => onDeleteModule(module)}
+                className="inline-flex rounded-full border border-rose-200 bg-white px-3 py-1.5 text-sm font-semibold text-rose-700 transition hover:border-rose-400 disabled:opacity-60"
+              >
+                {deletingModuleId === module.id ? "Deleting..." : "Delete"}
+              </button>
+            ) : null}
+          </div>
         </div>
       ))}
     </div>

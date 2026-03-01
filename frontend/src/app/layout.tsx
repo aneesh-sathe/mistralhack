@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import GlobalJobProgress from "@/components/GlobalJobProgress";
 import Navbar from "@/components/Navbar";
+import { ToastProvider } from "@/components/ToastProvider";
 
 import "./globals.css";
 
@@ -14,13 +15,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <div className="page-bg">
-          <div className="app-frame">
-            <Navbar />
-            <GlobalJobProgress />
-            <main className="inner-page">{children}</main>
+        <ToastProvider>
+          <div className="page-bg">
+            <div className="app-frame">
+              <Navbar />
+              <GlobalJobProgress />
+              <main className="inner-page">{children}</main>
+            </div>
           </div>
-        </div>
+        </ToastProvider>
       </body>
     </html>
   );

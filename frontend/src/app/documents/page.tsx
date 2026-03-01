@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import JobProgress from "@/components/JobProgress";
+import { useToast } from "@/components/ToastProvider";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import UploadDropzone from "@/components/UploadDropzone";
 import { deleteDocument, listDocuments, uploadDocument } from "@/lib/api";
+import { trackDocumentParseJob } from "@/lib/jobTracker";
 import { DocumentItem } from "@/lib/types";
 
 function statusTone(status: DocumentItem["status"]): string {
@@ -17,9 +19,10 @@ function statusTone(status: DocumentItem["status"]): string {
 
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const [jobId, setJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const [pendingDeleteDoc, setPendingDeleteDoc] = useState<DocumentItem | null>(null);
+  const { notify } = useToast();
 
   const refresh = useCallback(async () => {
     try {
@@ -35,25 +38,53 @@ export default function DocumentsPage() {
     refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    const hasRunning = documents.some((item) => item.status === "PARSING" || item.status === "PDF_UPLOADED");
+    if (!hasRunning) return;
+
+    const id = setInterval(refresh, 4000);
+    return () => clearInterval(id);
+  }, [documents, refresh]);
+
   const onUpload = async (file: File) => {
     const res = await uploadDocument(file);
-    setJobId(res.job_id);
+    trackDocumentParseJob({
+      jobId: res.job_id,
+      documentId: res.document_id,
+      documentTitle: file.name.replace(/\.pdf$/i, ""),
+      createdAt: new Date().toISOString(),
+    });
+    notify({
+      title: "Upload received",
+      description: "Document processing has started in the background.",
+      tone: "info",
+      dedupeKey: `upload-${res.job_id}`,
+    });
     await refresh();
   };
 
-  const onDeleteDocument = async (doc: DocumentItem) => {
-    const ok = window.confirm(`Delete lesson \"${doc.title}\"? This removes generated assets too.`);
-    if (!ok) return;
-
+  const onDeleteDocument = async () => {
+    if (!pendingDeleteDoc) return;
     try {
-      setDeletingDocId(doc.id);
-      await deleteDocument(doc.id);
+      setDeletingDocId(pendingDeleteDoc.id);
+      await deleteDocument(pendingDeleteDoc.id);
       await refresh();
       setError(null);
+      notify({
+        title: "Lesson deleted",
+        description: pendingDeleteDoc.title,
+        tone: "success",
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete lesson");
+      notify({
+        title: "Delete failed",
+        description: pendingDeleteDoc.title,
+        tone: "error",
+      });
     } finally {
       setDeletingDocId(null);
+      setPendingDeleteDoc(null);
     }
   };
 
@@ -69,7 +100,6 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      <JobProgress jobId={jobId} onComplete={refresh} />
       {error ? <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p> : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -90,7 +120,7 @@ export default function DocumentsPage() {
               <button
                 type="button"
                 disabled={deletingDocId === doc.id}
-                onClick={() => onDeleteDocument(doc)}
+                onClick={() => setPendingDeleteDoc(doc)}
                 className="inline-flex rounded-full border border-rose-200 bg-white px-3 py-1.5 text-sm font-semibold text-rose-700 transition hover:border-rose-400 disabled:opacity-60"
               >
                 {deletingDocId === doc.id ? "Deleting..." : "Delete"}
@@ -105,6 +135,24 @@ export default function DocumentsPage() {
           </div>
         ) : null}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteDoc)}
+        title="Delete lesson?"
+        description={
+          pendingDeleteDoc
+            ? `This will remove "${pendingDeleteDoc.title}" and all generated assets. This action cannot be undone.`
+            : ""
+        }
+        confirmLabel={deletingDocId ? "Deleting..." : "Delete lesson"}
+        cancelLabel="Cancel"
+        busy={Boolean(deletingDocId)}
+        onConfirm={onDeleteDocument}
+        onCancel={() => {
+          if (!deletingDocId) setPendingDeleteDoc(null);
+        }}
+        tone="danger"
+      />
     </section>
   );
 }

@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 
 import ModuleList from "@/components/ModuleList";
-import { getDocument, getDocumentModules } from "@/lib/api";
+import { useToast } from "@/components/ToastProvider";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { deleteModule, getDocument, getDocumentModules } from "@/lib/api";
 import { DocumentItem, ModuleItem } from "@/lib/types";
 
 function statusColor(status: DocumentItem["status"] | undefined): string {
@@ -17,7 +19,10 @@ export default function DocumentDetailPage({ params }: { params: { docId: string
   const { docId } = params;
   const [doc, setDoc] = useState<DocumentItem | null>(null);
   const [modules, setModules] = useState<ModuleItem[]>([]);
+  const [deletingModuleId, setDeletingModuleId] = useState<string | null>(null);
+  const [pendingDeleteModule, setPendingDeleteModule] = useState<ModuleItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { notify } = useToast();
 
   const load = useCallback(async () => {
     try {
@@ -35,6 +40,30 @@ export default function DocumentDetailPage({ params }: { params: { docId: string
     const id = setInterval(load, 4000);
     return () => clearInterval(id);
   }, [load]);
+
+  const confirmDeleteModule = async () => {
+    if (!pendingDeleteModule) return;
+    try {
+      setDeletingModuleId(pendingDeleteModule.id);
+      await deleteModule(pendingDeleteModule.id);
+      setPendingDeleteModule(null);
+      await load();
+      notify({
+        title: "Module deleted",
+        description: pendingDeleteModule.title,
+        tone: "success",
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete module");
+      notify({
+        title: "Delete failed",
+        description: pendingDeleteModule.title,
+        tone: "error",
+      });
+    } finally {
+      setDeletingModuleId(null);
+    }
+  };
 
   return (
     <section className="space-y-4">
@@ -62,7 +91,25 @@ export default function DocumentDetailPage({ params }: { params: { docId: string
         </p>
       </div>
 
-      <ModuleList modules={modules} />
+      <ModuleList modules={modules} deletingModuleId={deletingModuleId} onDeleteModule={setPendingDeleteModule} />
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteModule)}
+        title="Delete module?"
+        description={
+          pendingDeleteModule
+            ? `This removes "${pendingDeleteModule.title}" and any generated lesson assets. This action cannot be undone.`
+            : ""
+        }
+        confirmLabel={deletingModuleId ? "Deleting..." : "Delete module"}
+        cancelLabel="Cancel"
+        busy={Boolean(deletingModuleId)}
+        onConfirm={confirmDeleteModule}
+        onCancel={() => {
+          if (!deletingModuleId) setPendingDeleteModule(null);
+        }}
+        tone="danger"
+      />
     </section>
   );
 }

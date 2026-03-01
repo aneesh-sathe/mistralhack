@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { chatWithModuleStream, getCaptions } from "@/lib/api";
 import { ModuleChatTurn } from "@/lib/types";
@@ -8,6 +8,7 @@ import { ModuleChatTurn } from "@/lib/types";
 interface CaptionPanelProps {
   moduleId: string;
   currentTime: number;
+  onSeekTo?: (seconds: number) => void;
 }
 
 interface Segment {
@@ -42,7 +43,7 @@ function parseSrt(srt: string): Segment[] {
   return rows;
 }
 
-export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProps) {
+export default function CaptionPanel({ moduleId, currentTime, onSeekTo }: CaptionPanelProps) {
   const [segments, setSegments] = useState<Segment[]>([]);
   const [tab, setTab] = useState<"captions" | "chat">("captions");
   const [chatTurns, setChatTurns] = useState<ModuleChatTurn[]>([]);
@@ -50,6 +51,7 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
   const [chatBusy, setChatBusy] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [chatModel, setChatModel] = useState<string>("");
+  const captionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
     let active = true;
@@ -73,6 +75,14 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
     () => segments.findIndex((segment) => currentTime >= segment.start && currentTime <= segment.end),
     [segments, currentTime]
   );
+
+  useEffect(() => {
+    if (tab !== "captions") return;
+    if (activeIndex < 0) return;
+    const el = captionRefs.current[activeIndex];
+    if (!el) return;
+    el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [activeIndex, tab]);
 
   const submitChat = async (event: FormEvent) => {
     event.preventDefault();
@@ -119,7 +129,7 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
     }
   };
 
-  return (
+  const panel = (
     <div className="card h-full p-3">
       <div className="mb-3 flex gap-2 rounded-full bg-slate-100 p-1">
         <button
@@ -143,14 +153,21 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
       {tab === "captions" ? (
         <div className="h-[450px] space-y-2 overflow-y-auto pr-1">
           {segments.map((segment, idx) => (
-            <p
+            <button
+              type="button"
               key={`${segment.index}-${segment.start}`}
-              className={`rounded-xl px-3 py-2 text-sm leading-relaxed transition ${
-                idx === activeIndex ? "bg-brand-50 text-brand-700" : "bg-slate-50 text-slate-700"
+              ref={(el) => {
+                captionRefs.current[idx] = el;
+              }}
+              onClick={() => onSeekTo?.(segment.start)}
+              className={`w-full rounded-xl px-3 py-2 text-left text-sm leading-relaxed transition ${
+                idx === activeIndex
+                  ? "bg-brand-50 text-brand-700 ring-1 ring-brand-200"
+                  : "bg-slate-50 text-slate-700 hover:bg-slate-100"
               }`}
             >
               {segment.text}
-            </p>
+            </button>
           ))}
           {!segments.length ? <p className="text-sm text-slate-500">Captions unavailable.</p> : null}
         </div>
@@ -203,4 +220,6 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
       ) : null}
     </div>
   );
+
+  return panel;
 }
