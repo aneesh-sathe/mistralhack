@@ -87,6 +87,7 @@ class ManimConfig(BaseModel):
     model: str = Field(alias="MODEL")
     quality: str = Field(default="medium", alias="QUALITY")
     scene_class_name: str = Field(default="LessonScene", alias="SCENE_CLASS_NAME")
+    max_tokens: int = Field(default=6000, alias="MAX_TOKENS")
     render_backend: str = Field(default="local", alias="RENDER_BACKEND")
     mcp_command: str = Field(default="", alias="MCP_COMMAND")
     mcp_args: list[str] = Field(default_factory=list, alias="MCP_ARGS")

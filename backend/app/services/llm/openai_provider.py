@@ -26,6 +26,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self.chat_temperature = cfg.chat.temperature
         self.chat_max_tokens = cfg.chat.max_tokens
         self.manim_model = cfg.manim.model
+        self.manim_max_tokens = cfg.manim.max_tokens
         self.vlm_model = cfg.vlm.model
         self.vlm_temperature = cfg.vlm.temperature
         self.vlm_max_tokens = cfg.vlm.max_tokens
@@ -219,7 +220,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 {"role": "user", "content": prompt},
             ],
             temperature=0.1,
-            max_tokens=self.llm_max_tokens,
+            max_tokens=self.manim_max_tokens,
         )
         return text.strip()
 

@@ -5,57 +5,81 @@ import json
 
 # Concrete examples showing correct Manim patterns
 EXAMPLES = """
-EXAMPLE 1 - Correct Text Reveal:
+EXAMPLE 1 - Default scene start (ALWAYS clear screen first unless carry-forward):
 ```python
-title = Text("Understanding Division", font_size=36)
-title.to_edge(UP, buff=0.5)
-self.play(AddTextLetterByLetter(title, time_per_char=0.02), run_time=0.7)
+safe_w = config.frame_width - 1.4
+safe_h = config.frame_height - 1.0
+
+def fit(m):
+    if m.width > safe_w:
+        m.scale_to_fit_width(safe_w)
+    if m.height > safe_h:
+        m.scale_to_fit_height(safe_h)
+    return m
+
+self.play(FadeOut(*self.mobjects), run_time=0.3)
+title = fit(Text("Understanding Division", font_size=34))
+title.to_edge(UP, buff=0.6)
+self.play(AddTextLetterByLetter(title, time_per_char=0.02), run_time=0.6)
 self.wait(0.3)
 ```
 
-EXAMPLE 2 - Frame Safety:
+EXAMPLE 2 - Stacking text and equations (fit on EVERY object):
 ```python
-safe_width = config.frame_width - 1.2
-equation = Text("25 divided by 5 equals 5", font_size=32)
-if equation.width > safe_width:
-    equation.scale_to_fit_width(safe_width)
-equation.next_to(title, DOWN, buff=0.4)
+body = fit(Text("When we divide 25 by 5 we get 5.", font_size=28))
+body.next_to(title, DOWN, buff=0.4)
+self.play(AddTextLetterByLetter(body, time_per_char=0.014), run_time=0.8)
+
+eq = fit(Text("25 divided by 5 equals 5", font_size=30, color=YELLOW))
+eq.next_to(body, DOWN, buff=0.35)
+self.play(AddTextLetterByLetter(eq, time_per_char=0.014), run_time=0.7)
 ```
 
-EXAMPLE 3 - Proper Spacing (NO overlaps):
+EXAMPLE 3 - Proper spacing (NO overlaps, always use buff >= 0.35):
 ```python
 stack = VGroup()
-line1 = Text("First concept")
-line1.to_edge(UP, buff=0.5)
+line1 = fit(Text("First concept", font_size=28))
+line1.to_edge(UP, buff=0.6)
 stack.add(line1)
 
-line2 = Text("Second concept")
-line2.next_to(line1, DOWN, buff=0.35)  # Clear vertical gap
+line2 = fit(Text("Second concept", font_size=28))
+line2.next_to(line1, DOWN, buff=0.35)
 stack.add(line2)
 
-equation = Text("x = 10")
-equation.next_to(line2, DOWN, buff=0.35)  # Another clear gap
+equation = fit(Text("x = 10", font_size=30, color=YELLOW))
+equation.next_to(line2, DOWN, buff=0.35)
 stack.add(equation)
 ```
 
-EXAMPLE 4 - Context Carryover:
+EXAMPLE 4 - Carry-forward (ONLY when narration says "recall"/"as we saw"/"therefore"):
 ```python
-# If scene references "as we saw earlier", keep prior content:
-# Don't use: self.play(FadeOut(*self.mobjects))
-# Do use: Build new content below existing content
-new_text = Text("Building on this...")
-new_text.next_to(existing_stack, DOWN, buff=0.4)
-self.play(AddTextLetterByLetter(new_text), run_time=0.6)
+stack = VGroup(title, body, eq)
+# MANDATORY height check before adding more content
+if stack.height > config.frame_height * 0.72:
+    self.play(FadeOut(stack), run_time=0.25)
+    stack = VGroup()
+    next_title = fit(Text("Continuing...", font_size=34))
+    next_title.to_edge(UP, buff=0.6)
+    self.play(AddTextLetterByLetter(next_title, time_per_char=0.02), run_time=0.6)
+else:
+    new_line = fit(Text("Building on this...", font_size=28))
+    new_line.next_to(stack, DOWN, buff=0.4)
+    self.play(AddTextLetterByLetter(new_line, time_per_char=0.014), run_time=0.6)
+    stack.add(new_line)
 ```
 
 CRITICAL RULES:
-✓ DO use AddTextLetterByLetter for ALL instructional text
-✓ DO check frame bounds: config.frame_width - 1.2, config.frame_height - 0.9
-✓ DO use buff >= 0.3 between elements (prefer 0.35-0.45)
-✓ DO include ALL math_expressions from script
+✓ CLEAR screen between scenes: self.play(FadeOut(*self.mobjects), run_time=0.3) — DEFAULT
+✓ USE AddTextLetterByLetter for ALL instructional text
+✓ CALL fit() on EVERY Text/mobject before placing or animating — never skip
+✓ font_size <= 34 for titles, <= 30 for equations (color=YELLOW), <= 28 for body text
+✓ buff >= 0.35 between stacked elements
+✓ Include ALL math_expressions from script as YELLOW Text objects
+✓ HEIGHT CHECK before stacking: if stack.height > config.frame_height * 0.72 → clear
+✗ DON'T carry forward unless narration explicitly says "recall", "as we saw", "therefore", "earlier"
 ✗ DON'T use Write() or FadeIn() for instructional text
-✗ DON'T assume objects fit without checking
-✗ DON'T place objects at same position (causes overlaps)
+✗ DON'T use font_size > 34
+✗ DON'T stack more content than fits in config.frame_height * 0.72
 """
 
 
@@ -110,6 +134,8 @@ def script_generation_prompt(module_title: str, module_summary: str, chunk_text:
         "Use only entities and names present in source text; do not invent people/place names. "
         "Do not produce ASR-like gibberish or malformed phrases. "
         "Do not alter normal words that contain letters like x or hyphens (for example: 'next', 'real-world', 'explore'). "
+        "visual_instructions must be specific and visual — describe exactly what diagram/shape/layout to draw "
+        "(e.g. 'draw a number line from 0 to 10', 'show two rectangles side by side', 'display equation in centre'). "
         "full_narration_text must concatenate scene narration in order.\n"
         "No markdown, only JSON.\n\n"
         f"Module title: {module_title}\n"
@@ -133,14 +159,20 @@ def manim_code_prompt(
         "DO NOT use MathTex, Tex, or SingleStringMathTex because the runtime has no LaTeX binary, "
         "and ensure code runs in headless Linux container. Prefer Text/MarkupText and simple shapes. "
         "Primary rules:\n"
-        "1) Script alignment: animate what the script says (title, on_screen_text, math_expressions).\n"
+        "1) Script alignment: animate exactly what the script says — title, on_screen_text, "
+        "math_expressions (as YELLOW Text), visual diagram from visual_instructions.\n"
         "2) Reveal text/equations character-by-character using AddTextLetterByLetter.\n"
-        "3) Coherence: if a scene references earlier context, keep prior content visible and build new content below it; "
-        "otherwise transition cleanly.\n"
-        "4) Keep ample spacing between visual elements and successive animations. "
-        "Use clear vertical gaps (buff around 0.25-0.45) and avoid overlapping text/equations unless explicitly replacing one item.\n"
-        "5) Keep visuals inside the camera frame. Use config.frame_width/config.frame_height safe margins "
-        "(for example width <= config.frame_width - 1.0) and clamp/reposition objects that approach edges.\n"
+        "3) Scene transitions: CLEAR the screen at the start of EVERY scene with "
+        "self.play(FadeOut(*self.mobjects), run_time=0.3). EXCEPTION: only keep prior content "
+        "if the scene's narration_text explicitly contains 'recall', 'as we saw', 'building on', "
+        "'therefore', or 'earlier'. In carry-forward mode, always check "
+        "stack.height > config.frame_height * 0.72 and clear if so.\n"
+        "4) Frame safety: define fit(m) at the top of construct() — "
+        "scale_to_fit_width(config.frame_width - 1.4), scale_to_fit_height(config.frame_height - 1.0). "
+        "Call fit() on EVERY Text and diagram mobject before positioning. "
+        "font_size <= 34 for titles, <= 30 for equations, <= 28 for body text.\n"
+        "5) Spacing: buff >= 0.35 between stacked elements. "
+        "Never place a new element without calling .next_to() or .to_edge().\n"
         "6) Use run_time/wait so each scene approximately matches timing_alignment.duration_seconds.\n"
         "No markdown.\n\n"
         f"{EXAMPLES}\n\n"
@@ -187,8 +219,12 @@ def manim_code_prompt_mcp(
         "4) Use only standard Manim CE mobjects: Text, VGroup, Circle, Square, Rectangle, Line, Dot, Arrow, Axes, NumberPlane, Polygon.\n"
         "5) Match scene timing to timing_alignment duration_seconds using self.play(run_time=...) and self.wait(...).\n"
         "6) Reveal text with AddTextLetterByLetter(text_mobject) for instructional text.\n"
-        "7) Keep all objects within frame using config.frame_width and config.frame_height margins.\n"
-        "8) Animate each scene from the storyboard key_steps in order.\n\n"
+        "7) CLEAR the screen at the start of each scene: self.play(FadeOut(*self.mobjects), run_time=0.3). "
+        "Only skip clearing if narration explicitly says 'recall', 'as we saw', 'therefore', or 'earlier'.\n"
+        "8) Define fit(m) helper at top of construct(): scale to config.frame_width - 1.4 and config.frame_height - 1.0. "
+        "Call fit() on EVERY Text and diagram before placing. font_size <= 34 titles, <= 30 equations, <= 28 body.\n"
+        "9) buff >= 0.35 between all stacked elements.\n"
+        "10) If carrying forward content, check height > config.frame_height * 0.72 and clear if exceeded.\n\n"
         f"{EXAMPLES}\n\n"
         f"Storyboard JSON:\n{json.dumps(storyboard, indent=2)}\n\n"
         f"Timing alignment JSON (seconds):\n{json.dumps(timing_alignment, indent=2)}\n\n"
@@ -215,9 +251,10 @@ def manim_repair_prompt(
         "Do not use MathTex, Tex, or SingleStringMathTex. Use Text/MarkupText equivalents for equations. "
         "Preserve scene-to-audio pacing from timing_alignment. "
         "Reveal instructional text character-by-character with AddTextLetterByLetter. "
-        "If script scene references prior context, keep previous content and build below it. "
-        "Increase spacing to avoid overlap: keep generous vertical gaps and do not place new objects on top of existing ones unless replacing. "
-        "Keep all objects within frame bounds using safe margins from config.frame_width/config.frame_height.\n\n"
+        "CLEAR screen between scenes with FadeOut(*self.mobjects) — default behavior. "
+        "Define fit(m) at top of construct() and call it on every mobject. "
+        "font_size <= 34 titles, <= 30 equations, <= 28 body. buff >= 0.35 between elements. "
+        "Keep all objects within frame bounds using fit().\n\n"
         f"Manim documentation context:\n{manim_docs_context}\n\n"
         f"Scene contract JSON:\n{json.dumps(scene_contract, indent=2)}\n\n"
         f"Storyboard JSON:\n{json.dumps(storyboard, indent=2)}\n\n"
@@ -242,7 +279,9 @@ def manim_repair_prompt_mcp(
         f"Return ONLY corrected Python code for class {scene_class_name}. "
         "Use your own best Manim choices for visuals and pacing. "
         "Do NOT use mobject clipping APIs such as clip_path or set_clip_path; they are unavailable in this runtime. "
-        "For Sector, use keyword radius (not outer_radius).\n\n"
+        "For Sector, use keyword radius (not outer_radius). "
+        "CLEAR screen between scenes with FadeOut(*self.mobjects). "
+        "Define fit(m) helper; call fit() on every Text/mobject. font_size <= 34.\n\n"
         f"Storyboard JSON:\n{json.dumps(storyboard, indent=2)}\n\n"
         f"Timing alignment JSON (seconds):\n{json.dumps(timing_alignment, indent=2)}\n\n"
         f"Script JSON:\n{json.dumps(script_json, indent=2)}\n\n"

@@ -347,25 +347,72 @@ def _build_scene_contract(script_json: dict[str, Any], timing_alignment: list[di
     ]
 
 
-def _fallback_storyboard(scene_contract: list[dict[str, Any]]) -> dict[str, Any]:
-    scenes = []
+_VISUAL_TYPE_KEYWORDS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("number line", "numberline", "integers", "counting", "whole number"), "number_line"),
+    (("coordinate", "graph", "axes", "axis", "plot", "function", "parabola", "slope"), "coordinate_plane"),
+    (("fraction", "numerator", "denominator", "ratio", "proportion", "mixed number"), "fraction_bar"),
+    (("angle", "triangle", "polygon", "circle", "rectangle", "square", "geometry", "perimeter", "area"), "geometry_shape"),
+    (("factor tree", "prime factor", "hcf", "lcm", "divisor"), "tree_diagram"),
+    (("venn", "union", "intersection", "subset", "set"), "venn_diagram"),
+    (("block", "array", "grid", "area model", "group"), "blocks"),
+    (("step", "procedure", "process", "flow", "algorithm", "method"), "flowchart"),
+)
+
+
+def _infer_diagram_type(scene: dict[str, Any]) -> str:
+    combined = " ".join([
+        str(scene.get("visual_instructions", "")),
+        str(scene.get("on_screen_text", "")),
+        str(scene.get("narration_text", "")),
+        " ".join(str(e) for e in scene.get("math_expressions", [])),
+        str(scene.get("title", "")),
+    ]).lower()
+    for keywords, dtype in _VISUAL_TYPE_KEYWORDS:
+        if any(kw in combined for kw in keywords):
+            return dtype
+    return "equation_stack"
+
+
+def _build_smart_storyboard(scene_contract: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build a storyboard deterministically — no LLM call needed."""
+    scenes: list[dict[str, Any]] = []
     for scene in scene_contract:
         scene_id = int(scene["scene_id"])
-        scenes.append(
-            {
-                "scene_id": scene_id,
-                "teaching_goal": f"Explain {scene['title']} with visuals and progressive emphasis.",
-                "diagram_type": "flowchart",
-                "key_steps": [
-                    "Introduce the concept title and context.",
-                    "Show the main statement or equation clearly.",
-                    "Highlight the key transformation or conclusion.",
-                ],
-                "emphasis_terms": [scene["title"]],
-                "transition_style": "fade",
-            }
-        )
+        title = scene.get("title", f"Scene {scene_id}")
+        on_screen = scene.get("on_screen_text", "")
+        expressions = scene.get("math_expressions", [])
+        visual_instructions = scene.get("visual_instructions", "")
+        diagram_type = _infer_diagram_type(scene)
+
+        key_steps: list[str] = []
+        if visual_instructions:
+            key_steps.append(visual_instructions[:100])
+        for line in on_screen.split("\n")[:2]:
+            line = line.strip()
+            if line:
+                key_steps.append(f"Show: {line[:80]}")
+        for expr in expressions[:2]:
+            key_steps.append(f"Highlight: {str(expr)[:80]}")
+        if len(key_steps) < 2:
+            key_steps = [
+                f"Introduce: {title}",
+                "Present main concept visually",
+                "Reinforce with worked example",
+            ]
+
+        scenes.append({
+            "scene_id": scene_id,
+            "teaching_goal": f"Teach {title} clearly using {diagram_type.replace('_', ' ')}.",
+            "diagram_type": diagram_type,
+            "key_steps": key_steps[:5],
+            "emphasis_terms": [str(e)[:60] for e in expressions[:3]],
+            "transition_style": "fade",
+        })
     return {"scenes": scenes}
+
+
+def _fallback_storyboard(scene_contract: list[dict[str, Any]]) -> dict[str, Any]:
+    return _build_smart_storyboard(scene_contract)
 
 
 def _normalize_storyboard(data: dict[str, Any], scene_contract: list[dict[str, Any]]) -> dict[str, Any]:
@@ -423,13 +470,11 @@ def _generate_storyboard(
     scene_contract: list[dict[str, Any]],
     llm_provider: LLMProvider,
 ) -> dict[str, Any]:
-    docs_context = get_manim_docs_context()
-    prompt = manim_storyboard_prompt(script_json, timing_alignment, docs_context)
-    try:
-        raw = llm_provider.generate_json(prompt, max_retries=1)
-        return _normalize_storyboard(raw, scene_contract)
-    except Exception:
-        return _fallback_storyboard(scene_contract)
+    # Use deterministic storyboard — avoids one full LLM round-trip per attempt.
+    # The scene_contract already contains visual_instructions from the script agent,
+    # which is enough to infer diagram types and key steps without a separate LLM call.
+    del llm_provider  # unused
+    return _build_smart_storyboard(scene_contract)
 
 
 def _validate_frame_safety(code: str) -> list[str]:
@@ -599,9 +644,10 @@ def _build_fallback_manim_code(scene_class_name: str, scene_contract: list[dict[
     lines.append("")
     lines.append(f"class {scene_class_name}(Scene):")
     lines.append("    def construct(self):")
-    lines.append("        safe_width = config.frame_width - 1.2")
-    lines.append("        safe_height = config.frame_height - 0.9")
-    lines.append("        safe_bottom = (-config.frame_height / 2) + 0.45")
+    lines.append("        safe_width = config.frame_width - 1.4")
+    lines.append("        safe_height = config.frame_height - 1.0")
+    lines.append("        safe_bottom = (-config.frame_height / 2) + 0.5")
+    lines.append("        safe_top = (config.frame_height / 2) - 0.5")
     lines.append("")
     lines.append("        def fit_to_frame(mobj):")
     lines.append("            if mobj.width > safe_width:")
@@ -629,6 +675,10 @@ def _build_fallback_manim_code(scene_class_name: str, scene_contract: list[dict[
         lines.append(f"        # Scene {scene_id}: {title}")
         if index > 1 and not carry_forward:
             lines.append("        if len(stack_group.submobjects) > 0:")
+            lines.append(f"            self.play(FadeOut(stack_group), run_time={transition_rt:.2f})")
+            lines.append("            stack_group = VGroup()")
+        elif index > 1 and carry_forward:
+            lines.append("        if len(stack_group.submobjects) > 0 and stack_group.height > safe_height * 0.72:")
             lines.append(f"            self.play(FadeOut(stack_group), run_time={transition_rt:.2f})")
             lines.append("            stack_group = VGroup()")
 
@@ -691,9 +741,13 @@ def _build_fallback_manim_code(scene_class_name: str, scene_contract: list[dict[
             lines.append("")
 
         lines.append(f"        stack_group.add({group})")
-        lines.append("        if stack_group.get_bottom()[1] < safe_bottom:")
-        lines.append("            overflow = safe_bottom - stack_group.get_bottom()[1]")
-        lines.append("            self.play(stack_group.animate.shift(UP * (overflow + 0.08)), run_time=0.2)")
+        lines.append("        if len(stack_group.submobjects) > 0 and stack_group.get_bottom()[1] < safe_bottom:")
+        lines.append("            _shift_amt = safe_bottom - stack_group.get_bottom()[1] + 0.08")
+        lines.append("            if stack_group.get_top()[1] + _shift_amt > safe_top:")
+        lines.append("                self.play(FadeOut(stack_group), run_time=0.2)")
+        lines.append("                stack_group = VGroup()")
+        lines.append("            else:")
+        lines.append("                self.play(stack_group.animate.shift(UP * _shift_amt), run_time=0.2)")
 
         # Calculate consumed time: title (0.6) + underline (0.2) + text + math expressions
         text_time = 0.8 if on_screen_text else 0
