@@ -20,7 +20,7 @@ from app.db.models import (
     ModuleStatus,
 )
 from app.db.session import get_session_maker
-from app.services.captions.align import transcribe_segments
+from app.services.captions.align import caption_segments_from_script, transcribe_segments
 from app.services.captions.srt import write_srt
 from app.services.llm.manim_agent import generate_manim_code, repair_manim_code
 from app.services.llm.openai_provider import OpenAICompatibleProvider
@@ -231,7 +231,9 @@ def run_generate_module_assets(
         set_job_state(job, status=JobStatus.running, stage="VIDEO_DONE", percent=72)
     db.commit()
 
-    segments = transcribe_segments(audio_path, settings.config.captions.whisper_model)
+    segments = caption_segments_from_script(script_with_timing, timing_alignment)
+    if not segments:
+        segments = transcribe_segments(audio_path, settings.config.captions.whisper_model)
     captions_path = write_srt(storage.captions_path(str(module.id)), segments)
     asset.captions_srt_path = str(captions_path)
     asset.status = ModuleAssetStatus.CAPTIONS_DONE

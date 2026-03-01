@@ -29,6 +29,7 @@ body {
   background: var(--shell-bg);
 }
 
+/* ─── Layout ─────────────────────────────────────────────── */
 .page-bg {
   min-height: 100vh;
   padding: 42px;
@@ -51,10 +52,26 @@ body {
   padding: 26px 34px 34px;
 }
 
+/* ─── Cards / Surfaces ───────────────────────────────────── */
 .card {
   background: var(--card-bg);
   border: 1px solid var(--line);
   border-radius: 16px;
+  transition: box-shadow 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-interactive {
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-interactive:hover {
+  box-shadow: 0 8px 24px rgba(18, 20, 26, 0.10);
+  transform: translateY(-2px);
+}
+
+.card-interactive:active {
+  transform: translateY(0px) scale(0.99);
 }
 
 .soft-section {
@@ -69,6 +86,7 @@ body {
   border-radius: 14px;
 }
 
+/* ─── Status Pills ────────────────────────────────────────── */
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -78,8 +96,24 @@ body {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  position: relative;
+  overflow: hidden;
 }
 
+.status-pill-pulse::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  animation: pulse-ring 1.8s ease-in-out infinite;
+}
+
+@keyframes pulse-ring {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* ─── Hero ─────────────────────────────────────────────────── */
 .hero-illustration {
   position: relative;
   min-height: 430px;
@@ -98,12 +132,21 @@ body {
   line-height: 1;
   text-align: center;
   box-shadow: 0 8px 0 rgba(17, 18, 24, 0.1);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
+}
+
+.hero-badge:hover {
+  box-shadow: 0 12px 0 rgba(17, 18, 24, 0.15);
 }
 
 .hero-badge.badge-a {
   top: 74px;
   background: #ffe22a;
   transform: translateX(-45%) rotate(-10deg);
+}
+
+.hero-badge.badge-a:hover {
+  transform: translateX(-45%) rotate(-10deg) translateY(-4px);
 }
 
 .hero-badge.badge-b {
@@ -113,10 +156,18 @@ body {
   transform: translateX(-50%) rotate(-8deg);
 }
 
+.hero-badge.badge-b:hover {
+  transform: translateX(-50%) rotate(-8deg) translateY(-4px);
+}
+
 .hero-badge.badge-c {
   top: 266px;
   background: #56ea99;
   transform: translateX(-55%) rotate(-6deg);
+}
+
+.hero-badge.badge-c:hover {
+  transform: translateX(-55%) rotate(-6deg) translateY(-4px);
 }
 
 .hero-star {
@@ -124,23 +175,180 @@ body {
   color: #111218;
   font-size: 26px;
   font-weight: 700;
+  animation: float 3s ease-in-out infinite;
 }
 
 .hero-star.s1 {
   left: 18px;
   top: 118px;
+  animation-delay: 0s;
 }
 
 .hero-star.s2 {
   left: 56px;
   top: 260px;
+  animation-delay: 0.7s;
 }
 
 .hero-star.s3 {
   right: 70px;
   top: 96px;
+  animation-delay: 1.4s;
 }
 
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-12px) rotate(15deg); }
+}
+
+/* ─── Shimmer Skeleton ────────────────────────────────────── */
+.shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s linear infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ─── Confetti ────────────────────────────────────────────── */
+.confetti-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9999;
+  overflow: hidden;
+}
+
+/* ─── Drag Overlay ────────────────────────────────────────── */
+.drag-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(95, 67, 255, 0.06);
+  backdrop-filter: blur(2px);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.drag-overlay-inner {
+  background: white;
+  border: 2.5px dashed #5f43ff;
+  border-radius: 24px;
+  padding: 48px 64px;
+  text-align: center;
+  animation: scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes scale-in {
+  0% { opacity: 0; transform: scale(0.92); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* ─── Progress Bar ─────────────────────────────────────────── */
+.progress-bar {
+  height: 3px;
+  border-radius: 9999px;
+  background: rgba(95, 67, 255, 0.15);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #5f43ff, #8570ff);
+  border-radius: 9999px;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ─── Toast Auto-Dismiss Bar ──────────────────────────────── */
+.toast-dismiss-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 0 0 12px 12px;
+  background: currentColor;
+  opacity: 0.3;
+  animation: toast-shrink linear forwards;
+}
+
+@keyframes toast-shrink {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+/* ─── Keyboard Shortcut Badge ─────────────────────────────── */
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  padding: 2px 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: #374151;
+  box-shadow: 0 1px 0 #d1d5db;
+}
+
+/* ─── Loading Waveform ────────────────────────────────────── */
+.waveform {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 28px;
+}
+
+.waveform-bar {
+  width: 4px;
+  border-radius: 2px;
+  background: #5f43ff;
+  animation: waveform-dance 0.8s ease-in-out infinite;
+}
+
+.waveform-bar:nth-child(1) { animation-delay: 0s; }
+.waveform-bar:nth-child(2) { animation-delay: 0.1s; }
+.waveform-bar:nth-child(3) { animation-delay: 0.2s; }
+.waveform-bar:nth-child(4) { animation-delay: 0.3s; }
+.waveform-bar:nth-child(5) { animation-delay: 0.4s; }
+
+@keyframes waveform-dance {
+  0%, 100% { height: 6px; }
+  50% { height: 24px; }
+}
+
+/* ─── Success Checkmark ───────────────────────────────────── */
+.checkmark-path {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: draw-check 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
+}
+
+@keyframes draw-check {
+  to { stroke-dashoffset: 0; }
+}
+
+/* ─── Reduced Motion ──────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─── Responsive ──────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .page-bg {
     padding: 12px;

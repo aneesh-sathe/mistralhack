@@ -25,6 +25,14 @@ _FORBIDDEN_MCP_METHOD_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\.clip_path\s*\([^)]*\)", "clip_path"),
     (r"\.set_clip_path\s*\([^)]*\)", "set_clip_path"),
 )
+_LATEX_INLINE_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    (r"\\div", " divided by "),
+    (r"\\times", " multiplied by "),
+    (r"\\cdot", " multiplied by "),
+    (r"\\pm", " plus or minus "),
+    (r"\\left", " "),
+    (r"\\right", " "),
+)
 
 
 def _is_mcp_backend() -> bool:
@@ -220,7 +228,52 @@ def _find_forbidden_mcp_calls(code: str) -> list[str]:
 
 
 def _equation_key(text: str) -> str:
-    return re.sub(r"\s+", "", (text or "").strip().lower())
+    value = (text or "").strip().lower()
+    value = _latex_to_plain_text(value)
+    replacements = (
+        ("multiplied by", "*"),
+        ("times", "*"),
+        ("plus", "+"),
+        ("minus", "-"),
+        ("divided by", "/"),
+        ("equal to", "="),
+        ("equals", "="),
+        ("×", "*"),
+        ("÷", "/"),
+    )
+    for src, dest in replacements:
+        value = value.replace(src, dest)
+    value = re.sub(r"\s+", "", value)
+    value = re.sub(r"[^a-z0-9+\-*/=().]", "", value)
+    return value
+
+
+def _latex_to_plain_text(text: str) -> str:
+    value = (text or "").strip()
+    if not value:
+        return ""
+
+    previous = ""
+    while previous != value:
+        previous = value
+        value = re.sub(r"\\(?:d)?frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}", r"\1/\2", value)
+        value = re.sub(r"\\sqrt\s*\{([^{}]+)\}", r"sqrt(\1)", value)
+
+    for pattern, replacement in _LATEX_INLINE_REPLACEMENTS:
+        value = re.sub(pattern, replacement, value)
+
+    value = re.sub(r"\\[A-Za-z]+", " ", value)
+    value = value.replace("{", " ").replace("}", " ").replace("$", " ")
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _normalize_display_text(text: str, max_chars: int | None = None) -> str:
+    value = _latex_to_plain_text(text)
+    value = value.replace("’", "'").replace("“", '"').replace("”", '"')
+    value = re.sub(r"\s+", " ", value).strip()
+    if max_chars is not None and len(value) > max_chars:
+        value = value[: max_chars - 1].rstrip() + "..."
+    return value
 
 
 def _extract_scene_block(code: str, scene_id: int, next_scene_id: int | None) -> str | None:
@@ -257,11 +310,19 @@ def _build_scene_contract(script_json: dict[str, Any], timing_alignment: list[di
         scenes.append(
             {
                 "scene_id": scene_id,
-                "title": str(scene.get("title", f"Scene {scene_id}")).strip() or f"Scene {scene_id}",
-                "narration_text": str(scene.get("narration_text", "")).strip(),
-                "on_screen_text": str(scene.get("on_screen_text", "")).strip(),
-                "math_expressions": [str(x).strip() for x in scene.get("math_expressions", []) if str(x).strip()],
-                "visual_instructions": str(scene.get("visual_instructions", "")).strip(),
+                "title": _normalize_display_text(str(scene.get("title", f"Scene {scene_id}")).strip(), max_chars=90)
+                or f"Scene {scene_id}",
+                "narration_text": _normalize_display_text(str(scene.get("narration_text", "")).strip(), max_chars=500),
+                "on_screen_text": _normalize_display_text(str(scene.get("on_screen_text", "")).strip(), max_chars=240),
+                "math_expressions": [
+                    _normalize_display_text(str(x).strip(), max_chars=120)
+                    for x in scene.get("math_expressions", [])
+                    if str(x).strip()
+                ],
+                "visual_instructions": _normalize_display_text(
+                    str(scene.get("visual_instructions", "")).strip(),
+                    max_chars=300,
+                ),
                 "target_duration_seconds": float(timing.get("duration_seconds", 0.0) or 0.0),
             }
         )
@@ -274,7 +335,10 @@ def _build_scene_contract(script_json: dict[str, Any], timing_alignment: list[di
         {
             "scene_id": 1,
             "title": title or "Lesson",
-            "narration_text": str(script_json.get("full_narration_text", "")).strip() if isinstance(script_json, dict) else "",
+            "narration_text": _normalize_display_text(
+                str(script_json.get("full_narration_text", "")).strip() if isinstance(script_json, dict) else "",
+                max_chars=500,
+            ),
             "on_screen_text": title or "Lesson",
             "math_expressions": [],
             "visual_instructions": "Explain the key idea with a visual diagram.",
@@ -485,22 +549,8 @@ def _validate_generated_code(code: str, scene_class_name: str, scene_contract: l
         raise ValueError(f"Generated Manim code failed quality validation:\n{details}")
 
 
-def _validate_mcp_generated_code(code: str, scene_class_name: str) -> None:
-    errors: list[str] = []
-    if f"class {scene_class_name}(Scene)" not in code:
-        errors.append(f"Generated code must include class {scene_class_name}(Scene).")
-    forbidden_calls = _find_forbidden_mcp_calls(code)
-    if forbidden_calls:
-        errors.append(
-            "Generated code uses unsupported Manim methods for MCP runtime: "
-            + ", ".join(sorted(set(forbidden_calls)))
-            + "."
-        )
-    try:
-        ast.parse(code)
-    except SyntaxError as exc:
-        errors.append(f"Generated Manim code has invalid Python syntax: {exc}")
-
+def _validate_mcp_generated_code(code: str, scene_class_name: str, scene_contract: list[dict[str, Any]]) -> None:
+    errors = _collect_validation_errors(code, scene_class_name, scene_contract)
     if errors:
         details = "\n".join(f"- {item}" for item in errors)
         raise ValueError(f"Generated MCP Manim code failed compatibility validation:\n{details}")
@@ -594,7 +644,7 @@ def _build_fallback_manim_code(scene_class_name: str, scene_contract: list[dict[
         lines.append(f"        self.play(AddTextLetterByLetter({title_var}, time_per_char=0.02), run_time=0.6)")
         lines.append(f"        underline_width_{scene_id} = min(max(3.8, {title_var}.width + 0.5), safe_width)")
         lines.append(
-            f"        underline_{scene_id} = Line(LEFT * (underline_width_{scene_id} / 2), RIGHT * (underline_width_{scene_id} / 2)).next_to({title_var}, DOWN, buff=0.18)"
+            f"        underline_{scene_id} = Line(LEFT * (underline_width_{scene_id} / 2), RIGHT * (underline_width_{scene_id} / 2)).next_to({title_var}, DOWN, buff=0.32)"
         )
         lines.append(f"        {group}.add(underline_{scene_id})")
         lines.append(f"        self.play(Create(underline_{scene_id}), run_time=0.2)")
@@ -703,7 +753,7 @@ def generate_manim_code(
             code = _rewrite_sector_calls(code)
             code = _rewrite_unsupported_mobject_calls(code)
             try:
-                _validate_mcp_generated_code(code, scene_class_name)
+                _validate_mcp_generated_code(code, scene_class_name, scene_contract)
                 logger.info(
                     "manim_generation_success",
                     extra={
@@ -815,7 +865,7 @@ def repair_manim_code(
         repaired = _rewrite_sector_calls(repaired)
         repaired = _rewrite_unsupported_mobject_calls(repaired)
         try:
-            _validate_mcp_generated_code(repaired, scene_class_name)
+            _validate_mcp_generated_code(repaired, scene_class_name, scene_contract)
             return repaired
         except ValueError:
             return _build_fallback_manim_code(scene_class_name, scene_contract)

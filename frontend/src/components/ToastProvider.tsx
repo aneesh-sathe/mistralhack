@@ -1,8 +1,10 @@
 "use client";
 
 import { createContext, ReactNode, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 
 import Toast, { ToastTone } from "@/components/ui/toast";
+import { toastAnimation } from "@/lib/animations";
 
 interface ToastAction {
   label: string;
@@ -28,6 +30,8 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+const MAX_TOASTS = 3;
+
 function buildToastId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -49,7 +53,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
       const id = buildToastId();
       const entry: ToastEntry = { id, ...payload };
-      setToasts((prev) => [...prev, entry]);
+
+      // Enforce max stack
+      setToasts((prev) => {
+        const next = [...prev, entry];
+        return next.length > MAX_TOASTS ? next.slice(next.length - MAX_TOASTS) : next;
+      });
 
       const ttl = typeof payload.durationMs === "number" ? payload.durationMs : 7000;
       if (ttl > 0) {
@@ -64,19 +73,34 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-full max-w-sm flex-col gap-2 px-4" aria-live="polite">
-        {toasts.map((entry) => (
-          <div key={entry.id} className="pointer-events-auto">
-            <Toast
-              title={entry.title}
-              description={entry.description}
-              tone={entry.tone}
-              actionLabel={entry.action?.label}
-              onAction={entry.action?.onClick}
-              onClose={() => dismiss(entry.id)}
-            />
-          </div>
-        ))}
+      <div
+        className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-full max-w-sm flex-col gap-2 px-4"
+        aria-live="polite"
+        aria-label="Notifications"
+      >
+        <AnimatePresence mode="sync">
+          {toasts.map((entry) => (
+            <motion.div
+              key={entry.id}
+              className="pointer-events-auto"
+              variants={toastAnimation}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              layout
+            >
+              <Toast
+                title={entry.title}
+                description={entry.description}
+                tone={entry.tone}
+                actionLabel={entry.action?.label}
+                durationMs={entry.durationMs}
+                onAction={entry.action?.onClick}
+                onClose={() => dismiss(entry.id)}
+              />
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
     </ToastContext.Provider>
   );
