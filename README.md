@@ -1,6 +1,6 @@
 # Math Tutor MVP
 
-Math Tutor is a local-first MVP that ingests a math PDF and generates lesson modules with script, Manim animation, ElevenLabs narration, SRT captions, and final muxed MP4.
+LearnStral is a local-first MVP that ingests a PDF (any subject) and generates lesson modules with script, Manim animation, ElevenLabs narration, SRT captions, and final muxed MP4.
 
 ## Stack
 

@@ -24,3 +24,20 @@ def test_upload_creates_document_and_job(client: TestClient, sample_pdf_bytes: b
     job = job_res.json()
     assert job["status"] == "queued"
     assert job["progress"]["stage"] == "QUEUED"
+
+
+def test_delete_document(client: TestClient, sample_pdf_bytes: bytes):
+    response = client.post(
+        "/api/documents",
+        files={"file": ("to-delete.pdf", sample_pdf_bytes, "application/pdf")},
+    )
+    assert response.status_code == 200
+    document_id = response.json()["document_id"]
+
+    delete_res = client.delete(f"/api/documents/{document_id}")
+    assert delete_res.status_code == 204
+
+    docs_res = client.get("/api/documents")
+    assert docs_res.status_code == 200
+    docs = docs_res.json()["documents"]
+    assert all(doc["id"] != document_id for doc in docs)

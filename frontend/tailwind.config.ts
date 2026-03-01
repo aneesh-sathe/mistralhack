@@ -10,15 +10,34 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          50: "#f5f6ff",
-          100: "#e8eafc",
-          500: "#3f5efb",
-          700: "#2742d8"
+          50: "#edf0ff",
+          100: "#dde3ff",
+          500: "#3553de",
+          700: "#263b9f",
+        },
+        shell: {
+          50: "#f9eef6",
+          100: "#f3dfed",
+          200: "#e8c8de",
         },
       },
       fontFamily: {
-        display: ["'Space Grotesk'", "sans-serif"],
-        sans: ["'DM Sans'", "sans-serif"],
+        display: [
+          "\"SF Pro Display\"",
+          "\"SF Pro Text\"",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "\"Segoe UI\"",
+          "sans-serif",
+        ],
+        sans: [
+          "\"SF Pro Text\"",
+          "\"SF Pro Display\"",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "\"Segoe UI\"",
+          "sans-serif",
+        ],
       },
     },
   },

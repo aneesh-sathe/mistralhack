@@ -44,6 +44,10 @@ export function getDocument(docId: string) {
   return request<DocumentItem>(`/api/documents/${docId}`);
 }
 
+export function deleteDocument(docId: string) {
+  return request<void>(`/api/documents/${docId}`, { method: "DELETE" });
+}
+
 export function uploadDocument(file: File) {
   const form = new FormData();
   form.append("file", file);
@@ -71,10 +75,6 @@ export function getModuleAssets(moduleId: string) {
 
 export function getJob(jobId: string) {
   return request<JobItem>(`/api/jobs/${jobId}`);
-}
-
-export function getScript(moduleId: string) {
-  return request<{ script_text: string; script_json: Record<string, unknown> }>(`/api/artifacts/script/${moduleId}`);
 }
 
 export function getCaptions(moduleId: string) {

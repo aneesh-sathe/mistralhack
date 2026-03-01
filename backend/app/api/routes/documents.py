@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -104,3 +105,18 @@ def list_document_modules(document_id: str, db: Session = Depends(get_db), user:
 
     modules = db.query(Module).filter(Module.document_id == doc.id).order_by(Module.created_at.asc()).all()
     return {"modules": [_serialize_module(module) for module in modules]}
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(document_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    doc = db.query(Document).filter(Document.id == document_id, Document.user_id == user.id).first()
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    module_ids = [str(item[0]) for item in db.query(Module.id).filter(Module.document_id == doc.id).all()]
+    storage = LocalStorage()
+    storage.delete_document_files(str(doc.id), module_ids)
+
+    db.delete(doc)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

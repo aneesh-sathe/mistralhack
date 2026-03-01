@@ -1,26 +1,124 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --bg: #f8fafb;
-  --card: #ffffff;
-  --text: #111827;
-  --muted: #64748b;
-  --border: #dbe3ea;
+  --shell-bg: #f3dfed;
+  --shell-dot-a: #3f59e1;
+  --shell-dot-b: #ef6fc5;
+  --frame-bg: #fbfbfd;
+  --frame-border: #121216;
+  --card-bg: #ffffff;
+  --text-main: #17181d;
+  --text-muted: #636574;
+  --line: #e5e8f1;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
 }
 
 body {
-  background: radial-gradient(circle at 10% 5%, #e9f0ff 0%, #f8fafb 40%), var(--bg);
-  color: var(--text);
-  font-family: 'DM Sans', sans-serif;
+  margin: 0;
+  color: var(--text-main);
+  font-family: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--shell-bg);
+}
+
+.page-bg {
   min-height: 100vh;
+  position: relative;
+  padding: 22px;
+  overflow: hidden;
+}
+
+.page-bg::before,
+.page-bg::after {
+  content: "";
+  position: fixed;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  z-index: 0;
+}
+
+.page-bg::before {
+  background: var(--shell-dot-b);
+  left: -6px;
+  top: 18%;
+}
+
+.page-bg::after {
+  background: var(--shell-dot-a);
+  right: 8px;
+  top: 28%;
+}
+
+.app-frame {
+  position: relative;
+  z-index: 1;
+  margin: 0 auto;
+  max-width: 1240px;
+  min-height: calc(100vh - 44px);
+  border: 4px solid var(--frame-border);
+  border-radius: 42px;
+  background: var(--frame-bg);
+  box-shadow: 0 24px 40px rgba(26, 28, 41, 0.14);
+  overflow: hidden;
+}
+
+.inner-page {
+  margin: 0 auto;
+  max-width: 1110px;
+  padding: 20px 24px 30px;
 }
 
 .card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+}
+
+.soft-section {
+  border-radius: 24px;
+  border: 1px solid #e8c9dc;
+  background: #efd8e7;
+}
+
+.surface-muted {
+  border: 1px solid #dde3f3;
+  background: #f6f8fe;
+  border-radius: 16px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1024px) {
+  .page-bg {
+    padding: 12px;
+  }
+
+  .app-frame {
+    min-height: calc(100vh - 24px);
+    border-radius: 30px;
+  }
+
+  .inner-page {
+    padding: 18px 14px 24px;
+  }
 }

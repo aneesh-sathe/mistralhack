@@ -13,16 +13,18 @@ export default function VideoPlayer({ moduleId, onTimeUpdate }: VideoPlayerProps
   const ref = useRef<HTMLVideoElement | null>(null);
 
   return (
-    <video
-      ref={ref}
-      className="w-full rounded-lg border border-slate-200 bg-black"
-      controls
-      crossOrigin="use-credentials"
-      src={videoUrl(moduleId)}
-      onTimeUpdate={() => {
-        if (!ref.current || !onTimeUpdate) return;
-        onTimeUpdate(ref.current.currentTime);
-      }}
-    />
+    <div className="card overflow-hidden border-slate-200 p-3">
+      <video
+        ref={ref}
+        className="aspect-video w-full rounded-2xl border border-slate-200 bg-black"
+        controls
+        crossOrigin="use-credentials"
+        src={videoUrl(moduleId)}
+        onTimeUpdate={() => {
+          if (!ref.current || !onTimeUpdate) return;
+          onTimeUpdate(ref.current.currentTime);
+        }}
+      />
+    </div>
   );
 }

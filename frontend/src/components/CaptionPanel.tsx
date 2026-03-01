@@ -77,9 +77,7 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
   const submitChat = async (event: FormEvent) => {
     event.preventDefault();
     const message = chatInput.trim();
-    if (!message || chatBusy) {
-      return;
-    }
+    if (!message || chatBusy) return;
 
     const historyForApi = [...chatTurns];
     const userTurn: ModuleChatTurn = { role: "user", content: message };
@@ -100,16 +98,20 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
   };
 
   return (
-    <div className="card h-full p-4">
-      <div className="mb-3 flex gap-2">
+    <div className="card h-full border-slate-200 p-3">
+      <div className="mb-3 flex gap-2 rounded-xl bg-slate-100 p-1">
         <button
-          className={`rounded px-3 py-1 text-sm ${tab === "captions" ? "bg-brand-500 text-white" : "bg-slate-100 text-slate-700"}`}
+          className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+            tab === "captions" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
+          }`}
           onClick={() => setTab("captions")}
         >
           Captions
         </button>
         <button
-          className={`rounded px-3 py-1 text-sm ${tab === "chat" ? "bg-brand-500 text-white" : "bg-slate-100 text-slate-700"}`}
+          className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+            tab === "chat" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
+          }`}
           onClick={() => setTab("chat")}
         >
           Chat
@@ -117,11 +119,13 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
       </div>
 
       {tab === "captions" ? (
-        <div className="max-h-[420px] space-y-2 overflow-y-auto pr-2">
+        <div className="h-[450px] space-y-2 overflow-y-auto pr-1">
           {segments.map((segment, idx) => (
             <p
               key={`${segment.index}-${segment.start}`}
-              className={`rounded px-2 py-1 text-sm ${idx === activeIndex ? "bg-brand-100 text-brand-700" : "text-slate-700"}`}
+              className={`rounded-xl px-3 py-2 text-sm leading-relaxed transition ${
+                idx === activeIndex ? "bg-brand-50 text-brand-700" : "bg-slate-50 text-slate-700"
+              }`}
             >
               {segment.text}
             </p>
@@ -131,23 +135,25 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
       ) : null}
 
       {tab === "chat" ? (
-        <div className="flex h-[420px] flex-col">
-          <div className="flex-1 space-y-2 overflow-y-auto pr-2">
+        <div className="flex h-[450px] flex-col">
+          <div className="flex-1 space-y-2 overflow-y-auto pr-1">
             {chatTurns.map((turn, index) => (
               <div
                 key={`${turn.role}-${index}`}
-                className={`rounded px-3 py-2 text-sm ${
+                className={`rounded-xl px-3 py-2 text-sm ${
                   turn.role === "user"
-                    ? "ml-8 bg-brand-50 text-brand-700"
-                    : "mr-8 bg-slate-100 text-slate-800"
+                    ? "ml-8 border border-brand-200 bg-brand-50 text-brand-700"
+                    : "mr-8 border border-slate-200 bg-slate-50 text-slate-800"
                 }`}
               >
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{turn.role}</p>
-                <p className="whitespace-pre-wrap">{turn.content}</p>
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">{turn.role}</p>
+                <p className="whitespace-pre-wrap leading-relaxed">{turn.content}</p>
               </div>
             ))}
             {!chatTurns.length ? (
-              <p className="text-sm text-slate-500">Ask questions about this module. The assistant uses module content only.</p>
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+                Ask questions about this lesson. Responses are grounded in the module content.
+              </div>
             ) : null}
           </div>
 
@@ -157,19 +163,19 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
               onChange={(e) => setChatInput(e.target.value)}
               placeholder="Ask a question about this lesson..."
               rows={3}
-              className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none ring-brand-300 focus:ring"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-brand-500"
             />
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-500">{chatModel ? `Model: ${chatModel}` : ""}</p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="truncate text-xs text-slate-500">{chatModel ? `Model: ${chatModel}` : ""}</p>
               <button
                 type="submit"
                 disabled={chatBusy || !chatInput.trim()}
-                className="rounded bg-brand-500 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
               >
                 {chatBusy ? "Sending..." : "Send"}
               </button>
             </div>
-            {chatError ? <p className="text-sm text-red-600">{chatError}</p> : null}
+            {chatError ? <p className="text-sm font-medium text-rose-600">{chatError}</p> : null}
           </form>
         </div>
       ) : null}

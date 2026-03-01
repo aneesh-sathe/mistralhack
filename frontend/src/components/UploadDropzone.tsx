@@ -14,9 +14,7 @@ export default function UploadDropzone({ onUpload }: UploadDropzoneProps) {
   const [error, setError] = useState<string | null>(null);
 
   const handleFile = async (file: File | undefined) => {
-    if (!file) {
-      return;
-    }
+    if (!file) return;
     if (!file.name.toLowerCase().endsWith(".pdf")) {
       setError("Please select a PDF file.");
       return;
@@ -39,15 +37,18 @@ export default function UploadDropzone({ onUpload }: UploadDropzoneProps) {
   };
 
   return (
-    <div className="card p-6">
-      <p className="mb-3 text-sm text-slate-600">Upload a math PDF to start module extraction.</p>
-      <div className="flex items-center gap-3">
-        <input ref={inputRef} type="file" accept="application/pdf" onChange={onChange} className="text-sm" />
-        <Button disabled={busy} onClick={() => inputRef.current?.click()}>
+    <div className="card border-dashed border-slate-300 p-5">
+      <input ref={inputRef} type="file" accept="application/pdf" onChange={onChange} className="hidden" />
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h3 className="text-lg font-bold text-slate-900">Upload PDF</h3>
+          <p className="text-sm text-slate-600">Drop any subject PDF to auto-generate lessons.</p>
+        </div>
+        <Button disabled={busy} onClick={() => inputRef.current?.click()} className="min-w-[170px]">
           {busy ? "Uploading..." : "Choose PDF"}
         </Button>
       </div>
-      {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+      {error ? <p className="mt-3 text-sm font-medium text-rose-600">{error}</p> : null}
     </div>
   );
 }
