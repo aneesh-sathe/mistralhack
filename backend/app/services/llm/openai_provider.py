@@ -22,9 +22,10 @@ class OpenAICompatibleProvider(LLMProvider):
         self.llm_model = cfg.llm.model
         self.llm_temperature = cfg.llm.temperature
         self.llm_max_tokens = cfg.llm.max_tokens
-        self.chat_model = cfg.chat.model or cfg.llm.model
+        self.chat_model = cfg.chat.model
         self.chat_temperature = cfg.chat.temperature
         self.chat_max_tokens = cfg.chat.max_tokens
+        self.manim_model = cfg.manim.model
         self.vlm_model = cfg.vlm.model
         self.vlm_temperature = cfg.vlm.temperature
         self.vlm_max_tokens = cfg.vlm.max_tokens
@@ -64,21 +65,115 @@ class OpenAICompatibleProvider(LLMProvider):
         return content or ""
 
     @staticmethod
-    def _extract_json(text: str) -> dict:
+    def _strip_markdown_fences(text: str) -> str:
         candidate = text.strip()
-        try:
-            parsed = json.loads(candidate)
-            if isinstance(parsed, dict):
-                return parsed
-            return {"data": parsed}
-        except json.JSONDecodeError:
-            match = re.search(r"\{.*\}", text, flags=re.S)
-            if not match:
-                raise
-            parsed = json.loads(match.group(0))
-            if isinstance(parsed, dict):
-                return parsed
-            return {"data": parsed}
+        if candidate.startswith("```"):
+            candidate = re.sub(r"^```[a-zA-Z0-9_-]*\n?", "", candidate)
+            candidate = re.sub(r"\n?```$", "", candidate)
+        return candidate.strip()
+
+    @staticmethod
+    def _sanitize_json_text(text: str) -> str:
+        out: list[str] = []
+        in_string = False
+        escaped = False
+
+        for ch in text:
+            code = ord(ch)
+            if in_string:
+                if escaped:
+                    out.append(ch)
+                    escaped = False
+                    continue
+                if ch == "\\":
+                    out.append(ch)
+                    escaped = True
+                    continue
+                if ch == '"':
+                    out.append(ch)
+                    in_string = False
+                    continue
+                if code < 0x20:
+                    if ch == "\n":
+                        out.append("\\n")
+                    elif ch == "\r":
+                        out.append("\\r")
+                    elif ch == "\t":
+                        out.append("\\t")
+                    else:
+                        out.append(" ")
+                    continue
+                out.append(ch)
+                continue
+
+            if ch == '"':
+                in_string = True
+                out.append(ch)
+                continue
+            if code < 0x20 and ch not in {"\n", "\r", "\t"}:
+                continue
+            out.append(ch)
+
+        return "".join(out)
+
+    @staticmethod
+    def _extract_balanced_json_object(text: str) -> str | None:
+        start = text.find("{")
+        if start < 0:
+            return None
+
+        depth = 0
+        in_string = False
+        escaped = False
+
+        for idx in range(start, len(text)):
+            ch = text[idx]
+            if in_string:
+                if escaped:
+                    escaped = False
+                    continue
+                if ch == "\\":
+                    escaped = True
+                    continue
+                if ch == '"':
+                    in_string = False
+                continue
+
+            if ch == '"':
+                in_string = True
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start : idx + 1]
+        return None
+
+    @staticmethod
+    def _extract_json(text: str) -> dict:
+        raw = OpenAICompatibleProvider._strip_markdown_fences(text)
+        candidates = [raw]
+        balanced = OpenAICompatibleProvider._extract_balanced_json_object(raw)
+        if balanced:
+            candidates.append(balanced)
+
+        last_error: Exception | None = None
+        for candidate in candidates:
+            for parse_input in (candidate, OpenAICompatibleProvider._sanitize_json_text(candidate)):
+                if not parse_input.strip():
+                    continue
+                try:
+                    parsed = json.loads(parse_input)
+                    if isinstance(parsed, dict):
+                        return parsed
+                    return {"data": parsed}
+                except json.JSONDecodeError as exc:
+                    last_error = exc
+
+        if last_error is not None:
+            raise last_error
+        raise json.JSONDecodeError("No JSON object could be extracted", text, 0)
 
     def generate_json(self, prompt: str, max_retries: int = 2) -> dict:
         last_error: Exception | None = None
@@ -115,7 +210,7 @@ class OpenAICompatibleProvider(LLMProvider):
     def generate_code(self, prompt: str) -> str:
         text = self._chat(
             client=self.llm_client,
-            model=self.llm_model,
+            model=self.manim_model,
             messages=[
                 {
                     "role": "system",
@@ -136,6 +231,39 @@ class OpenAICompatibleProvider(LLMProvider):
             temperature=self.chat_temperature,
             max_tokens=self.chat_max_tokens,
         ).strip()
+
+    def stream_chat_text(self, messages: list[dict[str, Any]]):
+        stream = self.chat_client.chat.completions.create(
+            model=self.chat_model,
+            messages=messages,
+            temperature=self.chat_temperature,
+            max_tokens=self.chat_max_tokens,
+            stream=True,
+        )
+
+        for chunk in stream:
+            if not getattr(chunk, "choices", None):
+                continue
+
+            delta = chunk.choices[0].delta
+            content = getattr(delta, "content", None)
+            if isinstance(content, str):
+                yield content
+                continue
+
+            if isinstance(content, list):
+                parts: list[str] = []
+                for item in content:
+                    if isinstance(item, dict):
+                        text = item.get("text")
+                        if isinstance(text, str):
+                            parts.append(text)
+                    else:
+                        text = getattr(item, "text", None)
+                        if isinstance(text, str):
+                            parts.append(text)
+                if parts:
+                    yield "".join(parts)
 
     def vlm_extract_text(self, images: list[bytes], prompt: str) -> str:
         if not self.vlm_enabled:

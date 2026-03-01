@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { chatWithModule, getCaptions } from "@/lib/api";
+import { chatWithModuleStream, getCaptions } from "@/lib/api";
 import { ModuleChatTurn } from "@/lib/types";
 
 interface CaptionPanelProps {
@@ -81,16 +81,38 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
 
     const historyForApi = [...chatTurns];
     const userTurn: ModuleChatTurn = { role: "user", content: message };
-    setChatTurns((prev) => [...prev, userTurn]);
+    setChatTurns((prev) => [...prev, userTurn, { role: "assistant", content: "" }]);
     setChatInput("");
     setChatBusy(true);
     setChatError(null);
 
     try {
-      const res = await chatWithModule(moduleId, message, historyForApi);
-      setChatModel(res.model || "");
-      setChatTurns((prev) => [...prev, { role: "assistant", content: res.answer }]);
+      await chatWithModuleStream(moduleId, message, historyForApi, {
+        onMeta: ({ model }) => {
+          if (model) setChatModel(model);
+        },
+        onToken: (delta) => {
+          setChatTurns((prev) => {
+            if (!prev.length) return prev;
+            const next = [...prev];
+            const lastIdx = next.length - 1;
+            const last = next[lastIdx];
+            if (last.role !== "assistant") return prev;
+            next[lastIdx] = { ...last, content: last.content + delta };
+            return next;
+          });
+        },
+      });
     } catch (err) {
+      setChatTurns((prev) => {
+        if (!prev.length) return prev;
+        const next = [...prev];
+        const lastIdx = next.length - 1;
+        if (next[lastIdx].role === "assistant" && !next[lastIdx].content) {
+          next.pop();
+        }
+        return next;
+      });
       setChatError(err instanceof Error ? err.message : "Chat failed");
     } finally {
       setChatBusy(false);

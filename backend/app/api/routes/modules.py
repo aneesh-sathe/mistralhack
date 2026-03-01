@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -172,3 +174,41 @@ def chat_with_module(
         "model": llm.chat_model,
         "module_id": str(module.id),
     }
+
+
+@router.post("/{module_id}/chat/stream")
+def chat_with_module_stream(
+    module_id: str,
+    payload: ModuleChatRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    module = _get_owned_module(db, module_id, str(user.id))
+    if module is None:
+        raise HTTPException(status_code=404, detail="Module not found")
+
+    context = _load_module_context(db, module)
+    llm = OpenAICompatibleProvider()
+    messages: list[dict[str, str]] = [
+        {"role": "system", "content": module_chat_system_prompt()},
+        {"role": "system", "content": f"Module context:\n{context}"},
+    ]
+    recent_history = payload.history[-8:]
+    for turn in recent_history:
+        messages.append({"role": turn.role, "content": turn.content})
+    messages.append({"role": "user", "content": payload.message})
+
+    def event(obj: dict) -> str:
+        return json.dumps(obj, ensure_ascii=False) + "\n"
+
+    def stream():
+        yield event({"type": "meta", "model": llm.chat_model, "module_id": str(module.id)})
+        try:
+            for delta in llm.stream_chat_text(messages):
+                if delta:
+                    yield event({"type": "token", "delta": delta})
+            yield event({"type": "done"})
+        except Exception as exc:
+            yield event({"type": "error", "message": str(exc)})
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")

@@ -28,13 +28,23 @@ export default function JobProgress({ jobId, onComplete }: JobProgressProps) {
     }
 
     let active = true;
+    let completedNotified = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
     const poll = async () => {
       try {
         const res = await getJob(jobId);
         if (!active) return;
         setJob(res);
-        if ((res.status === "succeeded" || res.status === "failed") && onComplete) {
-          onComplete(res);
+        if (res.status === "succeeded" || res.status === "failed") {
+          if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+          }
+          if (!completedNotified && onComplete) {
+            completedNotified = true;
+            onComplete(res);
+          }
         }
       } catch (err) {
         if (!active) return;
@@ -43,10 +53,10 @@ export default function JobProgress({ jobId, onComplete }: JobProgressProps) {
     };
 
     poll();
-    const id = setInterval(poll, 2000);
+    intervalId = setInterval(poll, 2000);
     return () => {
       active = false;
-      clearInterval(id);
+      if (intervalId) clearInterval(intervalId);
     };
   }, [jobId, onComplete]);
 

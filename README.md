@@ -29,7 +29,6 @@ cp .env.example .env
 - `LLM_API_KEY`
 - `CHAT_BASE_URL`
 - `CHAT_API_KEY`
-- `CHAT_MODEL` (explicit module-chat model, e.g. `mistral-small-latest`)
 - `VLM_BASE_URL`
 - `VLM_API_KEY`
 - `VLM_ENABLED` (`false` by default)
@@ -38,6 +37,12 @@ cp .env.example .env
 - `ELEVENLABS_MODEL_ID`
 - `DATABASE_URL`
 - `REDIS_URL`
+
+3. Set models explicitly in `backend/app/core/config.yaml`:
+
+- `LLM.MODEL` for document parsing/script/module extraction
+- `CHAT.MODEL` for module chat responses
+- `MANIM.MODEL` for Manim code generation
 
 ## Run (one command)
 

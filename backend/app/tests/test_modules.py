@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 
 from fastapi.testclient import TestClient
@@ -126,3 +127,61 @@ def test_module_chat_endpoint(client: TestClient, db_session, dev_user: User, mo
     assert body["module_id"] == str(module.id)
     assert body["model"] == "mistral-small-latest"
     assert "Subtract 3" in body["answer"]
+
+
+def test_module_chat_stream_endpoint(client: TestClient, db_session, dev_user: User, monkeypatch):
+    doc = Document(
+        user_id=dev_user.id,
+        title="Physics",
+        filename="physics.pdf",
+        storage_path="/tmp/physics.pdf",
+        status=DocumentStatus.PARSED,
+    )
+    db_session.add(doc)
+    db_session.flush()
+
+    chunk = DocumentChunk(
+        document_id=doc.id,
+        page_start=1,
+        page_end=1,
+        text="Velocity is displacement per unit time.",
+        meta={"char_count": 39},
+    )
+    db_session.add(chunk)
+    db_session.flush()
+
+    module = Module(
+        document_id=doc.id,
+        title="Velocity Basics",
+        summary="Intro to velocity",
+        prerequisites=[],
+        chunk_refs=[str(chunk.id)],
+        status=ModuleStatus.READY,
+    )
+    db_session.add(module)
+    db_session.commit()
+
+    class FakeProvider:
+        chat_model = "mistral-chat-test"
+
+        def stream_chat_text(self, messages):
+            assert messages[-1]["role"] == "user"
+            yield "Velocity "
+            yield "is displacement over time."
+
+    monkeypatch.setattr("app.api.routes.modules.OpenAICompatibleProvider", FakeProvider)
+
+    with client.stream(
+        "POST",
+        f"/api/modules/{module.id}/chat/stream",
+        json={"message": "What is velocity?", "history": []},
+    ) as response:
+        assert response.status_code == 200
+        lines = [line for line in response.iter_lines() if line]
+
+    events = [json.loads(line) for line in lines]
+    assert events[0]["type"] == "meta"
+    assert events[0]["model"] == "mistral-chat-test"
+    token_text = "".join(evt.get("delta", "") for evt in events if evt.get("type") == "token")
+    assert token_text == "Velocity is displacement over time."
+    assert events[-1]["type"] == "done"

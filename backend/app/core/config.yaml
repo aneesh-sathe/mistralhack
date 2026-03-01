@@ -21,7 +21,7 @@ LLM:
   PROVIDER: "openai_compatible"
   BASE_URL: "${LLM_BASE_URL}"
   API_KEY: "${LLM_API_KEY}"
-  MODEL: "mistral-small-2506"
+  MODEL: "mistral-small-latest"
   TEMPERATURE: 0.3
   MAX_TOKENS: 10000
 
@@ -29,7 +29,7 @@ CHAT:
   PROVIDER: "openai_compatible"
   BASE_URL: "${CHAT_BASE_URL}"
   API_KEY: "${CHAT_API_KEY}"
-  MODEL: "${CHAT_MODEL}"
+  MODEL: "mistral-small-latest"
   TEMPERATURE: 0.2
   MAX_TOKENS: 1500
 
@@ -54,6 +54,7 @@ CAPTIONS:
   WHISPER_MODEL: "small"
 
 MANIM:
+  MODEL: "mistral-small-latest"
   QUALITY: "medium"
   SCENE_CLASS_NAME: "LessonScene"
   RENDER_BACKEND: "${MANIM_RENDER_BACKEND}"

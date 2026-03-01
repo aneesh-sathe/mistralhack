@@ -95,3 +95,82 @@ export function chatWithModule(moduleId: string, message: string, history: Modul
     body: JSON.stringify({ message, history }),
   });
 }
+
+interface ChatStreamHandlers {
+  onMeta?: (meta: { model?: string; module_id?: string }) => void;
+  onToken?: (delta: string) => void;
+  onDone?: () => void;
+}
+
+export async function chatWithModuleStream(
+  moduleId: string,
+  message: string,
+  history: ModuleChatTurn[],
+  handlers: ChatStreamHandlers = {}
+) {
+  const res = await fetch(`${API_BASE}/api/modules/${moduleId}/chat/stream`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ message, history }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Request failed: ${res.status}`);
+  }
+
+  if (!res.body) {
+    throw new Error("Streaming response body is unavailable");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const handleLine = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+
+    const evt = JSON.parse(trimmed) as {
+      type: string;
+      model?: string;
+      module_id?: string;
+      delta?: string;
+      message?: string;
+    };
+
+    if (evt.type === "meta") {
+      handlers.onMeta?.({ model: evt.model, module_id: evt.module_id });
+      return;
+    }
+    if (evt.type === "token") {
+      if (evt.delta) handlers.onToken?.(evt.delta);
+      return;
+    }
+    if (evt.type === "error") {
+      throw new Error(evt.message || "Streaming chat failed");
+    }
+    if (evt.type === "done") {
+      handlers.onDone?.();
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      handleLine(line);
+    }
+  }
+
+  if (buffer.trim()) {
+    handleLine(buffer);
+  }
+}

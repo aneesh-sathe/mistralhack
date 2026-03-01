@@ -84,6 +84,7 @@ class CaptionsConfig(BaseModel):
 
 
 class ManimConfig(BaseModel):
+    model: str = Field(alias="MODEL")
     quality: str = Field(default="medium", alias="QUALITY")
     scene_class_name: str = Field(default="LessonScene", alias="SCENE_CLASS_NAME")
     render_backend: str = Field(default="local", alias="RENDER_BACKEND")

@@ -1,9 +1,45 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.services.llm.base import LLMProvider
 from app.services.llm.prompts import script_generation_prompt
+
+
+_TOKEN_PATTERN = r"(?:\(?-?[A-Za-z0-9]+(?:\.[0-9]+)?\)?)"
+_BINARY_OP_PATTERN = re.compile(
+    rf"(?<![A-Za-z0-9_])({_TOKEN_PATTERN})\s*([+\-*/xX×÷])\s*({_TOKEN_PATTERN})(?![A-Za-z0-9_])"
+)
+_OP_WORDS = {
+    "+": "plus",
+    "-": "minus",
+    "*": "multiplied by",
+    "x": "multiplied by",
+    "X": "multiplied by",
+    "×": "multiplied by",
+    "/": "divided by",
+    "÷": "divided by",
+}
+
+
+def _expand_operator_abbreviations(text: str) -> str:
+    value = (text or "").strip()
+    if not value:
+        return ""
+
+    def repl(match: re.Match[str]) -> str:
+        left, op, right = match.group(1), match.group(2), match.group(3)
+        word = _OP_WORDS.get(op, op)
+        return f"{left} {word} {right}"
+
+    previous = value
+    for _ in range(5):
+        updated = _BINARY_OP_PATTERN.sub(repl, previous)
+        if updated == previous:
+            break
+        previous = updated
+    return re.sub(r"\s+", " ", previous).strip()
 
 
 def _normalize_script(data: dict[str, Any], module_title: str) -> dict[str, Any]:
@@ -15,7 +51,7 @@ def _normalize_script(data: dict[str, Any], module_title: str) -> dict[str, Any]
     for idx, scene in enumerate(scenes_raw, start=1):
         if not isinstance(scene, dict):
             continue
-        narration = str(scene.get("narration_text", "")).strip()
+        narration = _expand_operator_abbreviations(str(scene.get("narration_text", "")).strip())
         scenes.append(
             {
                 "scene_id": int(scene.get("scene_id", idx)),
@@ -42,6 +78,7 @@ def _normalize_script(data: dict[str, Any], module_title: str) -> dict[str, Any]
     full_narration = str(data.get("full_narration_text", "")).strip() if isinstance(data, dict) else ""
     if not full_narration:
         full_narration = " ".join(scene["narration_text"] for scene in scenes).strip()
+    full_narration = _expand_operator_abbreviations(full_narration)
 
     return {
         "module_title": str(data.get("module_title", module_title)).strip() if isinstance(data, dict) else module_title,
