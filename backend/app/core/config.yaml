@@ -21,7 +21,7 @@ LLM:
   PROVIDER: "openai_compatible"
   BASE_URL: "${LLM_BASE_URL}"
   API_KEY: "${LLM_API_KEY}"
-  MODEL: "mistral-small-latest"
+  MODEL: "ministral-14b-2512"
   TEMPERATURE: 0.3
   MAX_TOKENS: 10000
 
@@ -54,7 +54,7 @@ CAPTIONS:
   WHISPER_MODEL: "small"
 
 MANIM:
-  MODEL: "mistral-small-latest"
+  MODEL: "ministral-14b-2512"
   QUALITY: "medium"
   SCENE_CLASS_NAME: "LessonScene"
   RENDER_BACKEND: "${MANIM_RENDER_BACKEND}"

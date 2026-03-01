@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import CaptionPanel from "@/components/CaptionPanel";
@@ -18,7 +18,7 @@ import {
   trackedGenerationJobForModule,
   trackGenerationJob,
 } from "@/lib/jobTracker";
-import { fadeUp, staggerContainer, staggerItem } from "@/lib/animations";
+import { fadeUp } from "@/lib/animations";
 import { ModuleAssets, ModuleItem } from "@/lib/types";
 
 function statusConfig(status: ModuleItem["status"] | undefined): { pill: string; pulse: boolean } {
@@ -45,6 +45,11 @@ export default function ModulePage({ params }: { params: { moduleId: string } })
   const [videoTime, setVideoTime] = useState(0);
   const [seekTarget, setSeekTarget] = useState<number | null>(null);
   const [resumeAt, setResumeAt] = useState<number | null>(null);
+  // Used to skip the grid fade-in animation on re-mounts (prevents whitewash replay).
+  const videoGridShown = useRef(false);
+  useEffect(() => {
+    if (canPlay) videoGridShown.current = true;
+  });
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,9 +74,14 @@ export default function ModulePage({ params }: { params: { moduleId: string } })
       });
       try {
         const a = await getModuleAssets(moduleId);
-        setAssets(a);
+        // Never regress from a valid video path to none (e.g. during regeneration
+        // or when the backend is busy with a background job).
+        setAssets((prev) => {
+          if (!a?.final_muxed_path && prev?.final_muxed_path) return prev;
+          return a;
+        });
       } catch {
-        setAssets(null);
+        // Keep existing assets on error too.
       }
       setError(null);
     } catch (err) {
@@ -312,22 +322,18 @@ export default function ModulePage({ params }: { params: { moduleId: string } })
 
         {canPlay ? (
           <motion.div
-            variants={staggerContainer}
-            initial="hidden"
-            animate="visible"
+            initial={videoGridShown.current ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
             className="grid gap-4 xl:grid-cols-[1.8fr_1fr]"
           >
-            <motion.div variants={staggerItem}>
-              <VideoPlayer
-                moduleId={moduleId}
-                onTimeUpdate={onVideoTimeUpdate}
-                seekTo={seekTarget}
-                onSeekHandled={() => setSeekTarget(null)}
-              />
-            </motion.div>
-            <motion.div variants={staggerItem}>
-              <CaptionPanel moduleId={moduleId} currentTime={videoTime} onSeekTo={setSeekTarget} />
-            </motion.div>
+            <VideoPlayer
+              moduleId={moduleId}
+              onTimeUpdate={onVideoTimeUpdate}
+              seekTo={seekTarget}
+              onSeekHandled={() => setSeekTarget(null)}
+            />
+            <CaptionPanel moduleId={moduleId} currentTime={videoTime} onSeekTo={setSeekTarget} />
           </motion.div>
         ) : (
           <motion.div
