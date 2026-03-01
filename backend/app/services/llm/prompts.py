@@ -3,6 +3,88 @@ from __future__ import annotations
 import json
 
 
+# Concrete examples showing correct Manim patterns
+EXAMPLES = """
+EXAMPLE 1 - Correct Text Reveal:
+```python
+title = Text("Understanding Division", font_size=36)
+title.to_edge(UP, buff=0.5)
+self.play(AddTextLetterByLetter(title, time_per_char=0.02), run_time=0.7)
+self.wait(0.3)
+```
+
+EXAMPLE 2 - Frame Safety:
+```python
+safe_width = config.frame_width - 1.2
+equation = Text("25 divided by 5 equals 5", font_size=32)
+if equation.width > safe_width:
+    equation.scale_to_fit_width(safe_width)
+equation.next_to(title, DOWN, buff=0.4)
+```
+
+EXAMPLE 3 - Proper Spacing (NO overlaps):
+```python
+stack = VGroup()
+line1 = Text("First concept")
+line1.to_edge(UP, buff=0.5)
+stack.add(line1)
+
+line2 = Text("Second concept")
+line2.next_to(line1, DOWN, buff=0.35)  # Clear vertical gap
+stack.add(line2)
+
+equation = Text("x = 10")
+equation.next_to(line2, DOWN, buff=0.35)  # Another clear gap
+stack.add(equation)
+```
+
+EXAMPLE 4 - Context Carryover:
+```python
+# If scene references "as we saw earlier", keep prior content:
+# Don't use: self.play(FadeOut(*self.mobjects))
+# Do use: Build new content below existing content
+new_text = Text("Building on this...")
+new_text.next_to(existing_stack, DOWN, buff=0.4)
+self.play(AddTextLetterByLetter(new_text), run_time=0.6)
+```
+
+CRITICAL RULES:
+✓ DO use AddTextLetterByLetter for ALL instructional text
+✓ DO check frame bounds: config.frame_width - 1.2, config.frame_height - 0.9
+✓ DO use buff >= 0.3 between elements (prefer 0.35-0.45)
+✓ DO include ALL math_expressions from script
+✗ DON'T use Write() or FadeIn() for instructional text
+✗ DON'T assume objects fit without checking
+✗ DON'T place objects at same position (causes overlaps)
+"""
+
+
+def _inject_timing_guidance(prompt: str, scene_contract: list[dict]) -> str:
+    """Add timing breakdown to help LLM pace animations"""
+
+    guidance = "\n\nTIMING GUIDANCE:\n"
+    for scene in scene_contract:
+        target_dur = scene.get("target_duration_seconds", 0)
+
+        # Estimate component durations
+        title_time = 0.6
+        text_lines = len(scene.get("on_screen_text", "").split("\n"))
+        text_time = text_lines * 0.5
+        math_time = len(scene.get("math_expressions", [])) * 0.7
+        buffer_time = 0.5
+
+        animation_time = title_time + text_time + math_time
+        wait_time = max(0, target_dur - animation_time - buffer_time)
+
+        guidance += f"Scene {scene['scene_id']} (target: {target_dur:.1f}s):\n"
+        guidance += f"  - Title reveal: ~0.6s\n"
+        guidance += f"  - Text lines ({text_lines}): ~{text_time:.1f}s\n"
+        guidance += f"  - Math expressions: ~{math_time:.1f}s\n"
+        guidance += f"  - Recommended wait: {wait_time:.1f}s\n"
+
+    return prompt + guidance
+
+
 def module_extraction_prompt(chunks: list[dict]) -> str:
     return (
         "You are a curriculum extraction engine. Given chunk summaries from a math textbook, "
@@ -41,7 +123,7 @@ def manim_code_prompt(
     scene_contract: list[dict],
     storyboard: dict,
 ) -> str:
-    return (
+    base_prompt = (
         "You write deterministic Python Manim Community Edition code. "
         f"Return ONLY Python code for a single class named {scene_class_name} inheriting Scene. "
         "Requirements: render scenes in order, avoid external assets, "
@@ -58,12 +140,14 @@ def manim_code_prompt(
         "(for example width <= config.frame_width - 1.0) and clamp/reposition objects that approach edges.\n"
         "6) Use run_time/wait so each scene approximately matches timing_alignment.duration_seconds.\n"
         "No markdown.\n\n"
+        f"{EXAMPLES}\n\n"
         f"Manim documentation context:\n{manim_docs_context}\n\n"
         f"Scene contract JSON (must be followed exactly):\n{json.dumps(scene_contract, indent=2)}\n\n"
         f"Storyboard JSON:\n{json.dumps(storyboard, indent=2)}\n\n"
         f"Timing alignment JSON (seconds):\n{json.dumps(timing_alignment, indent=2)}\n\n"
         f"Script JSON:\n{json.dumps(script_json, indent=2)}"
     )
+    return _inject_timing_guidance(base_prompt, scene_contract)
 
 
 def manim_code_prompt_mcp(
@@ -72,15 +156,42 @@ def manim_code_prompt_mcp(
     timing_alignment: list[dict],
     storyboard: dict,
 ) -> str:
-    return (
-        "Write Python Manim Community Edition code for a lesson video. "
-        f"Return ONLY Python code for a single class named {scene_class_name} inheriting Scene. "
-        "Target runtime is manim-mcp-server (MCP tool execute_manim_code). "
-        "Use your own best Manim choices for pedagogy, visuals, and pacing.\n\n"
+    # Extract scene_contract from timing_alignment for timing guidance
+    scene_contract = []
+    for i, timing in enumerate(timing_alignment):
+        scene_id = timing.get("scene_id", i + 1)
+        # Extract relevant scene data from script_json
+        scene_data = next(
+            (s for s in script_json.get("scenes", []) if s.get("scene_id") == scene_id),
+            {}
+        )
+        scene_contract.append({
+            "scene_id": scene_id,
+            "target_duration_seconds": timing.get("duration_seconds", 5.0),
+            "on_screen_text": scene_data.get("on_screen_text", ""),
+            "math_expressions": scene_data.get("math_expressions", []),
+        })
+
+    base_prompt = (
+        "You write deterministic Python Manim Community Edition code. "
+        f"Return ONLY valid Python code — no markdown, no prose, no code fences — "
+        f"for a single class named {scene_class_name} inheriting Scene. "
+        "The code must be syntactically valid Python that can be parsed with ast.parse().\n\n"
+        "Hard rules:\n"
+        "1) Do NOT use MathTex, Tex, or SingleStringMathTex. Use Text() instead.\n"
+        "2) Do NOT use clip_path or set_clip_path methods.\n"
+        "3) For Sector, use keyword `radius` not `outer_radius`.\n"
+        "4) Use only standard Manim CE mobjects: Text, VGroup, Circle, Square, Rectangle, Line, Dot, Arrow, Axes, NumberPlane, Polygon.\n"
+        "5) Match scene timing to timing_alignment duration_seconds using self.play(run_time=...) and self.wait(...).\n"
+        "6) Reveal text with AddTextLetterByLetter(text_mobject) for instructional text.\n"
+        "7) Keep all objects within frame using config.frame_width and config.frame_height margins.\n"
+        "8) Animate each scene from the storyboard key_steps in order.\n\n"
+        f"{EXAMPLES}\n\n"
         f"Storyboard JSON:\n{json.dumps(storyboard, indent=2)}\n\n"
         f"Timing alignment JSON (seconds):\n{json.dumps(timing_alignment, indent=2)}\n\n"
         f"Script JSON:\n{json.dumps(script_json, indent=2)}"
     )
+    return _inject_timing_guidance(base_prompt, scene_contract)
 
 
 def manim_repair_prompt(
@@ -126,7 +237,9 @@ def manim_repair_prompt_mcp(
     return (
         "Repair this Manim code so it executes successfully in manim-mcp-server. "
         f"Return ONLY corrected Python code for class {scene_class_name}. "
-        "Use your own best Manim choices for visuals and pacing.\n\n"
+        "Use your own best Manim choices for visuals and pacing. "
+        "Do NOT use mobject clipping APIs such as clip_path or set_clip_path; they are unavailable in this runtime. "
+        "For Sector, use keyword radius (not outer_radius).\n\n"
         f"Storyboard JSON:\n{json.dumps(storyboard, indent=2)}\n\n"
         f"Timing alignment JSON (seconds):\n{json.dumps(timing_alignment, indent=2)}\n\n"
         f"Script JSON:\n{json.dumps(script_json, indent=2)}\n\n"

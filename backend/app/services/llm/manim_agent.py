@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import ast
+import logging
 import re
+import time
 from typing import Any
 
 from app.core.settings import get_settings
@@ -15,8 +17,14 @@ from app.services.llm.prompts import (
     manim_storyboard_prompt,
 )
 
+logger = logging.getLogger(__name__)
+
 _LATEX_MOBJECT_NAMES = {"MathTex", "Tex", "SingleStringMathTex"}
 _ALLOWED_TEXT_KWARGS = {"font_size", "color"}
+_FORBIDDEN_MCP_METHOD_PATTERNS: tuple[tuple[str, str], ...] = (
+    (r"\.clip_path\s*\([^)]*\)", "clip_path"),
+    (r"\.set_clip_path\s*\([^)]*\)", "set_clip_path"),
+)
 
 
 def _is_mcp_backend() -> bool:
@@ -153,10 +161,62 @@ def _rewrite_numberline_calls(code: str) -> str:
     return ast.unparse(rewritten)
 
 
+def _rewrite_sector_calls(code: str) -> str:
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return code
+
+    changed = False
+
+    class SectorTransformer(ast.NodeTransformer):
+        def visit_Call(self, node: ast.Call):  # noqa: N802
+            nonlocal changed
+            node = self.generic_visit(node)
+            name = _call_name(node)
+            if name != "Sector":
+                return node
+
+            has_radius = any(kw.arg == "radius" for kw in node.keywords)
+            for kw in node.keywords:
+                if kw.arg == "outer_radius":
+                    if not has_radius:
+                        kw.arg = "radius"
+                        has_radius = True
+                    else:
+                        kw.arg = None
+                    changed = True
+
+            if changed:
+                node.keywords = [kw for kw in node.keywords if kw.arg is not None]
+            return node
+
+    rewritten = SectorTransformer().visit(tree)
+    ast.fix_missing_locations(rewritten)
+    if not changed:
+        return code
+    return ast.unparse(rewritten)
+
+
 def _contains_latex_sensitive_numberline(code: str) -> bool:
     include_numbers_true = re.search(r"NumberLine\([^)]*include_numbers\s*=\s*True", code, flags=re.S)
     add_numbers_call = re.search(r"\.add_numbers\s*\(", code)
     return bool(include_numbers_true or add_numbers_call)
+
+
+def _rewrite_unsupported_mobject_calls(code: str) -> str:
+    rewritten = code
+    for pattern, _ in _FORBIDDEN_MCP_METHOD_PATTERNS:
+        rewritten = re.sub(pattern, "", rewritten)
+    return rewritten
+
+
+def _find_forbidden_mcp_calls(code: str) -> list[str]:
+    found: list[str] = []
+    for pattern, label in _FORBIDDEN_MCP_METHOD_PATTERNS:
+        if re.search(pattern, code):
+            found.append(label)
+    return found
 
 
 def _equation_key(text: str) -> str:
@@ -308,6 +368,69 @@ def _generate_storyboard(
         return _fallback_storyboard(scene_contract)
 
 
+def _validate_frame_safety(code: str) -> list[str]:
+    """Check if code includes frame safety checks"""
+    errors = []
+
+    # Look for frame safety patterns
+    has_frame_check = (
+        "config.frame_width" in code
+        or "config.frame_height" in code
+        or "scale_to_fit_width" in code
+        or "scale_to_fit_height" in code
+    )
+
+    if not has_frame_check:
+        errors.append(
+            "Code missing frame safety checks. Add: if obj.width > config.frame_width - 1.2: obj.scale_to_fit_width(...)"
+        )
+
+    return errors
+
+
+def _validate_spacing(code: str) -> list[str]:
+    """Check for proper spacing between elements"""
+    errors = []
+
+    # Look for buff parameter usage
+    buff_matches = re.findall(r"buff\s*=\s*([\d.]+)", code)
+
+    if buff_matches:
+        min_buff = min(float(b) for b in buff_matches)
+        if min_buff < 0.25:
+            errors.append(
+                f"Spacing too tight: found buff={min_buff}, use buff >= 0.3 to avoid overlaps"
+            )
+    else:
+        # No buff found - warning
+        errors.append(
+            "No spacing (buff) parameters found. Use .next_to(..., buff=0.35) for vertical spacing"
+        )
+
+    return errors
+
+
+def _validate_math_expressions_present(code: str, scene_contract: list[dict[str, Any]]) -> list[str]:
+    """Validate that all required math expressions are present in the code"""
+    errors = []
+    code_lower = code.lower()
+
+    for scene in scene_contract:
+        scene_id = int(scene.get("scene_id", 0))
+        expressions = scene.get("math_expressions", [])
+        for expr in expressions:
+            # Normalize expression for comparison
+            expr_key = _equation_key(expr)
+            code_key = _equation_key(code_lower)
+
+            if expr_key not in code_key:
+                errors.append(
+                    f"Scene {scene_id}: Required math expression missing: '{expr}'"
+                )
+
+    return errors
+
+
 def _collect_validation_errors(code: str, scene_class_name: str, scene_contract: list[dict[str, Any]]) -> list[str]:
     errors: list[str] = []
     if f"class {scene_class_name}(Scene)" not in code:
@@ -321,17 +444,23 @@ def _collect_validation_errors(code: str, scene_class_name: str, scene_contract:
             "Generated code uses NumberLine labels that require TeX (include_numbers=True or add_numbers). "
             "Use NumberLine without numeric labels in this runtime."
         )
+    forbidden_calls = _find_forbidden_mcp_calls(code)
+    if forbidden_calls:
+        errors.append(
+            "Generated code uses unsupported Manim methods for this runtime: "
+            + ", ".join(sorted(set(forbidden_calls)))
+            + "."
+        )
     if "AddTextLetterByLetter(" not in code:
         errors.append("Generated code must reveal instructional text character-by-character using AddTextLetterByLetter.")
 
-    compact_code = _equation_key(code)
+    # NEW validations
+    errors.extend(_validate_frame_safety(code))
+    errors.extend(_validate_spacing(code))
+    errors.extend(_validate_math_expressions_present(code, scene_contract))
+
     carry_forward_scenes = 0
     for index, scene in enumerate(scene_contract, start=1):
-        scene_id = int(scene.get("scene_id", index))
-        expressions = [str(expr).strip() for expr in scene.get("math_expressions", []) if str(expr).strip()]
-        if expressions:
-            if not any(_equation_key(expr) in compact_code for expr in expressions if _equation_key(expr)):
-                errors.append(f"Scene {scene_id} does not include script math_expressions.")
         if index > 1 and _scene_refers_previous(scene):
             carry_forward_scenes += 1
 
@@ -354,6 +483,27 @@ def _validate_generated_code(code: str, scene_class_name: str, scene_contract: l
     if errors:
         details = "\n".join(f"- {item}" for item in errors)
         raise ValueError(f"Generated Manim code failed quality validation:\n{details}")
+
+
+def _validate_mcp_generated_code(code: str, scene_class_name: str) -> None:
+    errors: list[str] = []
+    if f"class {scene_class_name}(Scene)" not in code:
+        errors.append(f"Generated code must include class {scene_class_name}(Scene).")
+    forbidden_calls = _find_forbidden_mcp_calls(code)
+    if forbidden_calls:
+        errors.append(
+            "Generated code uses unsupported Manim methods for MCP runtime: "
+            + ", ".join(sorted(set(forbidden_calls)))
+            + "."
+        )
+    try:
+        ast.parse(code)
+    except SyntaxError as exc:
+        errors.append(f"Generated Manim code has invalid Python syntax: {exc}")
+
+    if errors:
+        details = "\n".join(f"- {item}" for item in errors)
+        raise ValueError(f"Generated MCP Manim code failed compatibility validation:\n{details}")
 
 
 def _py_literal(text: str) -> str:
@@ -450,36 +600,56 @@ def _build_fallback_manim_code(scene_class_name: str, scene_contract: list[dict[
         lines.append(f"        self.play(Create(underline_{scene_id}), run_time=0.2)")
 
         line_var_prev = f"underline_{scene_id}"
-        display_lines: list[str] = []
-        if on_screen_text:
-            display_lines.append(on_screen_text)
-        if expressions:
-            display_lines.extend(expressions)
-        elif narration:
-            display_lines.append(narration)
-        if not display_lines:
-            display_lines.append(title)
-        if len(display_lines) > 3:
-            display_lines = display_lines[:3]
 
-        line_rt = max(0.42, min(0.95, target_duration / max(3, len(display_lines) + 2)))
-        for line_idx, line_text in enumerate(display_lines):
-            text_var = f"line_{scene_id}_{line_idx}"
-            lines.append(f"        {text_var} = fit_to_frame(Text({_py_literal(line_text)}, font_size=28))")
-            lines.append(f"        {text_var}.next_to({line_var_prev}, DOWN, aligned_edge=LEFT, buff=0.30)")
+        # Handle on-screen text
+        text_rt = 0.8
+        if on_screen_text:
+            text_var = f"text_{scene_id}"
+            on_screen_clean = on_screen_text.replace('"', '\\"').replace('\n', ' ')[:200]
+            lines.append(f"        {text_var} = fit_to_frame(Text({_py_literal(on_screen_clean)}, font_size=28))")
+            lines.append(f"        {text_var}.next_to({line_var_prev}, DOWN, aligned_edge=LEFT, buff=0.35)")
             lines.append(f"        if {text_var}.get_bottom()[1] < safe_bottom:")
             lines.append(f"            {text_var}.shift(UP * (safe_bottom - {text_var}.get_bottom()[1]))")
             lines.append(f"        {group}.add({text_var})")
-            lines.append(f"        self.play(AddTextLetterByLetter({text_var}, time_per_char=0.014), run_time={line_rt:.2f})")
+            lines.append(f"        self.play(AddTextLetterByLetter({text_var}, time_per_char=0.014), run_time={text_rt:.2f})")
             line_var_prev = text_var
+            lines.append("")
+
+        # Handle math expressions explicitly (with yellow color)
+        expr_rt = 0.7
+        for expr_idx, expr in enumerate(expressions[:3]):  # Limit to 3 expressions
+            expr_var = f"expr_{scene_id}_{expr_idx}"
+            expr_clean = expr.replace('"', '\\"')
+            lines.append(f"        {expr_var} = fit_to_frame(Text({_py_literal(expr_clean)}, font_size=32, color=YELLOW))")
+            lines.append(f"        {expr_var}.next_to({line_var_prev}, DOWN, aligned_edge=LEFT, buff=0.35)")
+            lines.append(f"        if {expr_var}.get_bottom()[1] < safe_bottom:")
+            lines.append(f"            {expr_var}.shift(UP * (safe_bottom - {expr_var}.get_bottom()[1]))")
+            lines.append(f"        {group}.add({expr_var})")
+            lines.append(f"        self.play(AddTextLetterByLetter({expr_var}, time_per_char=0.014), run_time={expr_rt:.2f})")
+            line_var_prev = expr_var
+            lines.append("")
+
+        # If no content, show narration
+        if not on_screen_text and not expressions and narration:
+            text_var = f"narr_{scene_id}"
+            lines.append(f"        {text_var} = fit_to_frame(Text({_py_literal(narration)}, font_size=28))")
+            lines.append(f"        {text_var}.next_to({line_var_prev}, DOWN, aligned_edge=LEFT, buff=0.35)")
+            lines.append(f"        if {text_var}.get_bottom()[1] < safe_bottom:")
+            lines.append(f"            {text_var}.shift(UP * (safe_bottom - {text_var}.get_bottom()[1]))")
+            lines.append(f"        {group}.add({text_var})")
+            lines.append(f"        self.play(AddTextLetterByLetter({text_var}, time_per_char=0.014), run_time={text_rt:.2f})")
+            lines.append("")
 
         lines.append(f"        stack_group.add({group})")
         lines.append("        if stack_group.get_bottom()[1] < safe_bottom:")
         lines.append("            overflow = safe_bottom - stack_group.get_bottom()[1]")
         lines.append("            self.play(stack_group.animate.shift(UP * (overflow + 0.08)), run_time=0.2)")
 
-        consumed = 0.6 + 0.2 + (line_rt * len(display_lines))
-        wait_rt = max(0.2, target_duration - consumed)
+        # Calculate consumed time: title (0.6) + underline (0.2) + text + math expressions
+        text_time = 0.8 if on_screen_text else 0
+        math_time = len(expressions[:3]) * 0.7
+        consumed = 0.6 + 0.2 + text_time + math_time
+        wait_rt = max(0.3, target_duration - consumed)
         lines.append(f"        self.wait({wait_rt:.2f})")
 
     lines.append("        if len(stack_group.submobjects) > 0:")
@@ -493,40 +663,115 @@ def generate_manim_code(
     scene_class_name: str,
     llm_provider: LLMProvider,
 ) -> str:
+    start_time = time.time()
     scene_contract = _build_scene_contract(script_json, timing_alignment)
-    storyboard = _generate_storyboard(script_json, timing_alignment, scene_contract, llm_provider)
     use_mcp_backend = _is_mcp_backend()
-    if use_mcp_backend:
-        prompt = manim_code_prompt_mcp(
-            scene_class_name,
-            script_json,
-            timing_alignment,
-            storyboard,
-        )
-    else:
-        docs_context = get_manim_docs_context()
-        prompt = manim_code_prompt(
-            scene_class_name,
-            script_json,
-            docs_context,
-            timing_alignment,
-            scene_contract,
-            storyboard,
-        )
 
-    code = _strip_code_fences(llm_provider.generate_code(prompt))
-    if use_mcp_backend:
-        return code
+    logger.info(
+        "manim_generation_started",
+        extra={
+            "scene_class": scene_class_name,
+            "use_mcp": use_mcp_backend,
+            "num_scenes": len(scene_contract),
+        },
+    )
 
-    code = _rewrite_latex_calls(code)
-    code = _rewrite_numberline_calls(code)
     try:
-        _validate_generated_code(code, scene_class_name, scene_contract)
+        storyboard = _generate_storyboard(script_json, timing_alignment, scene_contract, llm_provider)
+        if use_mcp_backend:
+            prompt = manim_code_prompt_mcp(
+                scene_class_name,
+                script_json,
+                timing_alignment,
+                storyboard,
+            )
+        else:
+            docs_context = get_manim_docs_context()
+            prompt = manim_code_prompt(
+                scene_class_name,
+                script_json,
+                docs_context,
+                timing_alignment,
+                scene_contract,
+                storyboard,
+            )
+
+        code = _strip_code_fences(llm_provider.generate_code(prompt))
+        if use_mcp_backend:
+            code = _rewrite_latex_calls(code)
+            code = _rewrite_numberline_calls(code)
+            code = _rewrite_sector_calls(code)
+            code = _rewrite_unsupported_mobject_calls(code)
+            try:
+                _validate_mcp_generated_code(code, scene_class_name)
+                logger.info(
+                    "manim_generation_success",
+                    extra={
+                        "scene_class": scene_class_name,
+                        "code_lines": len(code.split("\n")),
+                        "duration_ms": (time.time() - start_time) * 1000,
+                    },
+                )
+                return code
+            except ValueError as e:
+                logger.warning(
+                    "manim_validation_failed",
+                    extra={
+                        "scene_class": scene_class_name,
+                        "error": str(e),
+                        "duration_ms": (time.time() - start_time) * 1000,
+                    },
+                )
+                logger.info("manim_fallback_used", extra={"scene_class": scene_class_name})
+                return _build_fallback_manim_code(scene_class_name, scene_contract)
+
+        code = _rewrite_latex_calls(code)
+        code = _rewrite_numberline_calls(code)
+        code = _rewrite_sector_calls(code)
+
+        # Collect validation errors
+        errors = _collect_validation_errors(code, scene_class_name, scene_contract)
+
+        if errors:
+            logger.warning(
+                "manim_validation_failed",
+                extra={
+                    "scene_class": scene_class_name,
+                    "error_count": len(errors),
+                    "error_types": {
+                        "missing_math": sum(1 for e in errors if "math expression" in e.lower()),
+                        "missing_addtext": sum(1 for e in errors if "AddTextLetterByLetter" in e),
+                        "frame_safety": sum(1 for e in errors if "frame safety" in e.lower()),
+                        "spacing": sum(1 for e in errors if "spacing" in e.lower() or "buff" in e.lower()),
+                    },
+                    "duration_ms": (time.time() - start_time) * 1000,
+                },
+            )
+            logger.info("manim_fallback_used", extra={"scene_class": scene_class_name})
+            fallback = _build_fallback_manim_code(scene_class_name, scene_contract)
+            _validate_generated_code(fallback, scene_class_name, scene_contract)
+            return fallback
+
+        logger.info(
+            "manim_generation_success",
+            extra={
+                "scene_class": scene_class_name,
+                "code_lines": len(code.split("\n")),
+                "duration_ms": (time.time() - start_time) * 1000,
+            },
+        )
         return code
-    except ValueError:
-        fallback = _build_fallback_manim_code(scene_class_name, scene_contract)
-        _validate_generated_code(fallback, scene_class_name, scene_contract)
-        return fallback
+
+    except Exception as e:
+        logger.error(
+            "manim_generation_error",
+            extra={
+                "scene_class": scene_class_name,
+                "error": str(e),
+                "duration_ms": (time.time() - start_time) * 1000,
+            },
+        )
+        raise
 
 
 def repair_manim_code(
@@ -565,10 +810,19 @@ def repair_manim_code(
         )
     repaired = _strip_code_fences(llm_provider.generate_code(prompt))
     if use_mcp_backend:
-        return repaired
+        repaired = _rewrite_latex_calls(repaired)
+        repaired = _rewrite_numberline_calls(repaired)
+        repaired = _rewrite_sector_calls(repaired)
+        repaired = _rewrite_unsupported_mobject_calls(repaired)
+        try:
+            _validate_mcp_generated_code(repaired, scene_class_name)
+            return repaired
+        except ValueError:
+            return _build_fallback_manim_code(scene_class_name, scene_contract)
 
     repaired = _rewrite_latex_calls(repaired)
     repaired = _rewrite_numberline_calls(repaired)
+    repaired = _rewrite_sector_calls(repaired)
     try:
         _validate_generated_code(repaired, scene_class_name, scene_contract)
         return repaired

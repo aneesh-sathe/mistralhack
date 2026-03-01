@@ -179,8 +179,18 @@ def run_generate_module_assets(
 
             video_duration = _media_duration_seconds(str(video_path))
             drift_seconds = abs(video_duration - audio_duration)
-            if drift_seconds > 1.2:
+            if drift_seconds > 0.6:  # Reduced from 1.2s to 0.6s for tighter timing control
                 if attempt < 2:
+                    logger.warning(
+                        "Timing drift detected",
+                        extra={
+                            "module_id": str(module.id),
+                            "drift_seconds": drift_seconds,
+                            "video_duration": video_duration,
+                            "audio_duration": audio_duration,
+                            "attempt": attempt,
+                        },
+                    )
                     raise RuntimeError(
                         f"Video/audio timing drift too high: video={video_duration:.3f}s, "
                         f"audio={audio_duration:.3f}s, drift={drift_seconds:.3f}s. "
