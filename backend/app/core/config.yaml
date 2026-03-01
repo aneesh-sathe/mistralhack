@@ -54,7 +54,7 @@ CAPTIONS:
   WHISPER_MODEL: "small"
 
 MANIM:
-  MODEL: "mistral-small-latestxxx"
+  MODEL: "mistral-small-latest"
   QUALITY: "medium"
   SCENE_CLASS_NAME: "LessonScene"
   RENDER_BACKEND: "${MANIM_RENDER_BACKEND}"
