@@ -98,10 +98,10 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
   };
 
   return (
-    <div className="card h-full border-slate-200 p-3">
-      <div className="mb-3 flex gap-2 rounded-xl bg-slate-100 p-1">
+    <div className="card h-full p-3">
+      <div className="mb-3 flex gap-2 rounded-full bg-slate-100 p-1">
         <button
-          className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+          className={`flex-1 rounded-full px-3 py-2 text-sm font-semibold transition ${
             tab === "captions" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
           }`}
           onClick={() => setTab("captions")}
@@ -109,7 +109,7 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
           Captions
         </button>
         <button
-          className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+          className={`flex-1 rounded-full px-3 py-2 text-sm font-semibold transition ${
             tab === "chat" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
           }`}
           onClick={() => setTab("chat")}
@@ -170,7 +170,7 @@ export default function CaptionPanel({ moduleId, currentTime }: CaptionPanelProp
               <button
                 type="submit"
                 disabled={chatBusy || !chatInput.trim()}
-                className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+                className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
               >
                 {chatBusy ? "Sending..." : "Send"}
               </button>

@@ -39,10 +39,15 @@ export default function DocumentDetailPage({ params }: { params: { docId: string
   return (
     <section className="space-y-4">
       <header className="soft-section p-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="max-w-2xl">
             <h1 className="text-3xl font-black text-slate-900">{doc?.title || "Document"}</h1>
-            <p className="mt-1 text-sm text-slate-700">{doc?.filename || "Preparing metadata..."}</p>
+            <p className="mt-3 text-sm leading-relaxed text-slate-600">
+              View extracted modules and generate a final lesson from this document.
+            </p>
+            <p className="mt-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+              {doc?.filename || "Preparing metadata..."}
+            </p>
           </div>
           <span className={`status-pill ${statusColor(doc?.status)}`}>{doc?.status || "loading"}</span>
         </div>
@@ -52,7 +57,9 @@ export default function DocumentDetailPage({ params }: { params: { docId: string
 
       <div className="space-y-2">
         <h2 className="text-xl font-black text-slate-900">Extracted Modules</h2>
-        <p className="text-sm text-slate-600">Choose a module to generate and preview the final lesson video.</p>
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
+          Choose a module to generate and preview the final lesson video.
+        </p>
       </div>
 
       <ModuleList modules={modules} />

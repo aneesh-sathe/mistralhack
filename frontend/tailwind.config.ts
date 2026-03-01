@@ -10,15 +10,15 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          50: "#edf0ff",
-          100: "#dde3ff",
-          500: "#3553de",
-          700: "#263b9f",
+          50: "#f2efff",
+          100: "#e2ddff",
+          500: "#5f43ff",
+          700: "#4028d7",
         },
         shell: {
-          50: "#f9eef6",
-          100: "#f3dfed",
-          200: "#e8c8de",
+          50: "#ecf3ee",
+          100: "#dfe8e2",
+          200: "#cfdad3",
         },
       },
       fontFamily: {

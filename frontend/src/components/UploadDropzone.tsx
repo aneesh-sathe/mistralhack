@@ -37,7 +37,7 @@ export default function UploadDropzone({ onUpload }: UploadDropzoneProps) {
   };
 
   return (
-    <div className="card border-dashed border-slate-300 p-5">
+    <div className="card border border-dashed border-slate-300 p-5">
       <input ref={inputRef} type="file" accept="application/pdf" onChange={onChange} className="hidden" />
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>

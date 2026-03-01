@@ -3,15 +3,13 @@
 @tailwind utilities;
 
 :root {
-  --shell-bg: #f3dfed;
-  --shell-dot-a: #3f59e1;
-  --shell-dot-b: #ef6fc5;
-  --frame-bg: #fbfbfd;
-  --frame-border: #121216;
+  --shell-bg: #dfe8e2;
+  --frame-bg: #ffffff;
+  --frame-border: #d8ddd9;
   --card-bg: #ffffff;
-  --text-main: #17181d;
-  --text-muted: #636574;
-  --line: #e5e8f1;
+  --text-main: #111218;
+  --text-muted: #646878;
+  --line: #e8ebef;
 }
 
 * {
@@ -33,68 +31,42 @@ body {
 
 .page-bg {
   min-height: 100vh;
-  position: relative;
-  padding: 22px;
-  overflow: hidden;
-}
-
-.page-bg::before,
-.page-bg::after {
-  content: "";
-  position: fixed;
-  width: 22px;
-  height: 22px;
-  border-radius: 9999px;
-  z-index: 0;
-}
-
-.page-bg::before {
-  background: var(--shell-dot-b);
-  left: -6px;
-  top: 18%;
-}
-
-.page-bg::after {
-  background: var(--shell-dot-a);
-  right: 8px;
-  top: 28%;
+  padding: 42px;
 }
 
 .app-frame {
-  position: relative;
-  z-index: 1;
   margin: 0 auto;
   max-width: 1240px;
-  min-height: calc(100vh - 44px);
-  border: 4px solid var(--frame-border);
-  border-radius: 42px;
+  min-height: calc(100vh - 84px);
+  border: 1px solid var(--frame-border);
+  border-radius: 4px;
   background: var(--frame-bg);
-  box-shadow: 0 24px 40px rgba(26, 28, 41, 0.14);
+  box-shadow: 0 8px 24px rgba(18, 20, 26, 0.06);
   overflow: hidden;
 }
 
 .inner-page {
   margin: 0 auto;
   max-width: 1110px;
-  padding: 20px 24px 30px;
+  padding: 26px 34px 34px;
 }
 
 .card {
   background: var(--card-bg);
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 16px;
 }
 
 .soft-section {
-  border-radius: 24px;
-  border: 1px solid #e8c9dc;
-  background: #efd8e7;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: #fff;
 }
 
 .surface-muted {
-  border: 1px solid #dde3f3;
-  background: #f6f8fe;
-  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: #fbfbfd;
+  border-radius: 14px;
 }
 
 .status-pill {
@@ -108,6 +80,67 @@ body {
   text-transform: uppercase;
 }
 
+.hero-illustration {
+  position: relative;
+  min-height: 430px;
+}
+
+.hero-badge {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%) rotate(-8deg);
+  min-width: 230px;
+  border-radius: 999px;
+  border: 2px solid #111218;
+  padding: 18px 28px;
+  font-size: 38px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  box-shadow: 0 8px 0 rgba(17, 18, 24, 0.1);
+}
+
+.hero-badge.badge-a {
+  top: 74px;
+  background: #ffe22a;
+  transform: translateX(-45%) rotate(-10deg);
+}
+
+.hero-badge.badge-b {
+  top: 170px;
+  background: #5033ff;
+  color: #fff;
+  transform: translateX(-50%) rotate(-8deg);
+}
+
+.hero-badge.badge-c {
+  top: 266px;
+  background: #56ea99;
+  transform: translateX(-55%) rotate(-6deg);
+}
+
+.hero-star {
+  position: absolute;
+  color: #111218;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.hero-star.s1 {
+  left: 18px;
+  top: 118px;
+}
+
+.hero-star.s2 {
+  left: 56px;
+  top: 260px;
+}
+
+.hero-star.s3 {
+  right: 70px;
+  top: 96px;
+}
+
 @media (max-width: 1024px) {
   .page-bg {
     padding: 12px;
@@ -115,10 +148,19 @@ body {
 
   .app-frame {
     min-height: calc(100vh - 24px);
-    border-radius: 30px;
   }
 
   .inner-page {
-    padding: 18px 14px 24px;
+    padding: 16px;
+  }
+
+  .hero-illustration {
+    min-height: 330px;
+  }
+
+  .hero-badge {
+    min-width: 190px;
+    padding: 14px 20px;
+    font-size: 28px;
   }
 }

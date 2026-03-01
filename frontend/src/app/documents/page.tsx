@@ -15,8 +15,6 @@ function statusTone(status: DocumentItem["status"]): string {
   return "bg-slate-100 text-slate-700";
 }
 
-const DOC_COLORS = ["bg-[#dce4ff]", "bg-[#d4efdf]", "bg-[#f6e8c0]", "bg-[#efd9e7]"];
-
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -60,16 +58,13 @@ export default function DocumentsPage() {
   };
 
   return (
-    <section className="mx-auto max-w-5xl space-y-4">
-      <div className="soft-section space-y-4 px-6 py-7 text-center md:px-10 md:py-10">
-        <p className="mx-auto inline-flex rounded-full border border-slate-300 bg-white/80 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-700">
-          Lessons Library
-        </p>
+    <section className="mx-auto max-w-5xl space-y-5">
+      <div className="soft-section p-7 text-center">
         <h1 className="text-4xl font-black leading-tight text-slate-900 md:text-5xl">All Stored Lessons</h1>
-        <p className="mx-auto max-w-3xl text-sm leading-relaxed text-slate-700 md:text-base">
-          Upload and manage your lesson sources. Open any lesson to generate visuals, audio narration, captions, and interactive module chat.
+        <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-slate-600 md:text-base">
+          Upload a PDF for any subject, generate lessons, and manage everything in one place.
         </p>
-        <div className="mx-auto max-w-3xl">
+        <div className="mx-auto mt-6 max-w-3xl">
           <UploadDropzone onUpload={onUpload} />
         </div>
       </div>
@@ -78,16 +73,16 @@ export default function DocumentsPage() {
       {error ? <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p> : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {documents.map((doc, index) => (
-          <article key={doc.id} className={`card p-4 ${DOC_COLORS[index % DOC_COLORS.length]}`}>
+        {documents.map((doc) => (
+          <article key={doc.id} className="card p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="line-clamp-1 text-lg font-black text-slate-900">{doc.title}</h2>
               <span className={`status-pill ${statusTone(doc.status)}`}>{doc.status}</span>
             </div>
-            <p className="mb-4 line-clamp-2 text-sm text-slate-700">{doc.filename}</p>
+            <p className="mb-4 line-clamp-2 text-sm text-slate-600">{doc.filename}</p>
             <div className="flex items-center gap-2">
               <Link
-                className="inline-flex rounded-lg border border-slate-400 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-700"
+                className="inline-flex rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-700"
                 href={`/documents/${doc.id}`}
               >
                 Open modules
@@ -96,7 +91,7 @@ export default function DocumentsPage() {
                 type="button"
                 disabled={deletingDocId === doc.id}
                 onClick={() => onDeleteDocument(doc)}
-                className="inline-flex rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-sm font-semibold text-rose-700 transition hover:border-rose-500 disabled:opacity-60"
+                className="inline-flex rounded-full border border-rose-200 bg-white px-3 py-1.5 text-sm font-semibold text-rose-700 transition hover:border-rose-400 disabled:opacity-60"
               >
                 {deletingDocId === doc.id ? "Deleting..." : "Delete"}
               </button>
